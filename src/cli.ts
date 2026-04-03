@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { setup, uninstall } from "./setup.js";
 import { formatState, formatCompact, formatMinimal } from "./display.js";
 import { readState } from "./state.js";
