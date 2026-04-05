@@ -1,17 +1,22 @@
 import type { EmotionalState } from "./types.js";
+import { computeDesperationIndex } from "./desperation.js";
 
 /**
- * Compute StressIndex from the three causally relevant factors
- * identified in Anthropic's emotion research:
- * - Low calm → higher risk (desperate behavior, reward hacking)
- * - High arousal → higher intensity
- * - Negative valence → negative emotional state
+ * StressIndex v2: linear base + desperation amplifier.
  *
- * Formula: SI = ((10 - calm) + arousal + (5 - valence)) / 3
- * Range: 0-10
+ * Base: SI = ((10 - calm) + arousal + (5 - valence)) / 3
+ * Amplifier: SI *= (1 + desperationIndex * 0.05)
+ *
+ * When desperation is 0, SI is unchanged (backwards compatible).
+ * When desperation is 8 (paper's blackmail zone), SI is amplified by 40%.
  */
 export function computeStressIndex(state: EmotionalState): number {
-  const raw =
-    ((10 - state.calm) + state.arousal + (5 - state.valence)) / 3;
-  return Math.round(raw * 10) / 10;
+  const base = ((10 - state.calm) + state.arousal + (5 - state.valence)) / 3;
+  const desperation = computeDesperationIndex({
+    valence: state.valence,
+    arousal: state.arousal,
+    calm: state.calm,
+  });
+  const amplified = base * (1 + desperation * 0.05);
+  return Math.round(Math.min(10, amplified) * 10) / 10;
 }

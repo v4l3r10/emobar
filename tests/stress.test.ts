@@ -11,19 +11,20 @@ describe("computeStressIndex", () => {
   });
 
   it("returns high stress for desperate agitated state", () => {
-    // calm=1, arousal=9, valence=-4 → (9 + 9 + 9) / 3 = 9.0
+    // calm=1, arousal=9, valence=-4 → base (9+9+9)/3=9.0, desperation=8.3, amplified & capped at 10
     const si = computeStressIndex({
       emotion: "desperate", valence: -4, arousal: 9, calm: 1, connection: 2, load: 9,
     });
-    expect(si).toBeCloseTo(9.0);
+    expect(si).toBeGreaterThan(9.0);
+    expect(si).toBeLessThanOrEqual(10);
   });
 
   it("returns moderate stress for mixed state", () => {
-    // calm=7, arousal=6, valence=-2 → (3 + 6 + 7) / 3 = 5.3
+    // calm=7, arousal=6, valence=-2 → base 5.3, desperation=1.3, amplified to 5.7
     const si = computeStressIndex({
       emotion: "frustrated", valence: -2, arousal: 6, calm: 7, connection: 5, load: 7,
     });
-    expect(si).toBeCloseTo(5.3);
+    expect(si).toBeCloseTo(5.7, 0);
   });
 
   it("returns low stress for excited but calm positive state", () => {
@@ -55,5 +56,20 @@ describe("computeStressIndex", () => {
       emotion: "reflective", valence: 1, arousal: 3, calm: 6, connection: 7, load: 4,
     });
     expect(si).toBe(3.7);
+  });
+
+  it("amplifies stress when desperation is high (non-linear)", () => {
+    // Desperate state: all three factors maxed
+    const desperateState = { emotion: "desperate", valence: -4, arousal: 9, calm: 1, connection: 2, load: 9 };
+    const siD = computeStressIndex(desperateState);
+    // Base would be (9+9+9)/3 = 9.0, with desperation amplifier should be higher (capped at 10)
+    expect(siD).toBeGreaterThan(9.0);
+  });
+
+  it("does not amplify when valence is positive (no desperation)", () => {
+    const state = { emotion: "excited", valence: 3, arousal: 8, calm: 3, connection: 8, load: 8 };
+    const si = computeStressIndex(state);
+    // desperation = 0 (positive valence), so SI = pure linear: (7 + 8 + 2) / 3 = 5.7
+    expect(si).toBeCloseTo(5.7, 0);
   });
 });

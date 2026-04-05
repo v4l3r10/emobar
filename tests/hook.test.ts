@@ -43,8 +43,8 @@ describe("processHookPayload", () => {
 
     processHookPayload(payload, tmpFile);
     const state = readState(tmpFile);
-    // SI = ((10-1) + 9 + (5-(-4))) / 3 = (9 + 9 + 9) / 3 = 9.0
-    expect(state!.stressIndex).toBeCloseTo(9.0);
+    // SI v2: base (9+9+9)/3=9.0, desperation=8.3, amplified & capped at 10
+    expect(state!.stressIndex).toBe(10);
   });
 
   it("includes behavioral signals in state", () => {
