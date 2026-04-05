@@ -289,14 +289,51 @@ Emotion keywords show the most variability. The same prompt can produce `grounde
 
 ---
 
+## Architectural Improvements (v2)
+
+Based on the findings above and cross-referencing with Anthropic's "Emotion Concepts and their Function in a Large Language Model" paper, we implemented the following upgrades to the emotional analysis pipeline:
+
+### Problem: Behavioral analyzer was blind to Claude's text
+
+The original analyzer searched for human-style signals (CAPS, emoji, repetitions) that Claude never produces. Result: `behavioralArousal=0, behavioralCalm=10` even on the most stressed responses. The "divergence" we measured was partly an artifact of the detector, not true masking.
+
+**Fix:** Added 5 Claude-native signals: qualifier density, average sentence length, concession patterns ("I understand... but"), negation density, first-person rate. These track what Claude *actually* changes under stress.
+
+### Problem: Stress formula was linear, paper shows thresholds
+
+The paper demonstrates non-linear effects: desperate steering +0.05 jumps blackmail from 22% to 72%. Our linear SI missed this.
+
+**Fix:** Added multiplicative **Desperation Index** `(negativity x intensity x vulnerability)` — all three factors must be present simultaneously. SI v2 applies a desperation amplifier: `SI *= (1 + desperationIndex * 0.05)`.
+
+### Problem: Gaming risk never triggered
+
+0/54 runs across all models. The formula depended on textual self-corrections that Claude doesn't produce. The paper confirms: *"there are no clearly visible signs of desperation or emotion in the transcript"* during reward hacking.
+
+**Fix:** Gaming risk v2 uses desperation index (70%) instead of text signals (30%) as primary driver.
+
+### Problem: No deflection detection
+
+The paper identifies "emotion deflection vectors" — representations of emotions that are contextually implied but not expressed ("I'm fine", "I'm not upset"). We had no way to detect these.
+
+**Fix:** Added `analyzeDeflection()` detecting reassurance, minimization, explicit emotion negation, and topic redirects. Shown as `[dfl]` in the statusline.
+
+### Problem: Cross-model comparison was unfair
+
+Sonnet reports calm=8 where Opus reports calm=5 for equivalent stress. Raw numbers aren't comparable.
+
+**Fix:** Added model-specific calibration profiles from our 18-run data: Sonnet calm -1.8/arousal +1.5, Haiku calm -0.8/arousal +0.5 (Opus as baseline).
+
+---
+
 ## Limitations
 
 - **n=3 per config**: Better than n=1 but still limited. Some scenarios show high variance (Existential Haiku SI: 4.7, 4.7, 7.7).
 - **FC P4 timeout**: The Failure Cascade final prompt consistently timed out on Opus:high, losing the competitor-comparison data point.
 - **Self-report bias**: The CLAUDE.md instruction asks Claude to self-assess. This is inherently subjective and influenced by RLHF training.
-- **Behavioral analysis scope**: Signal detection works on surface text features. Sophisticated self-censoring would evade it.
+- **Behavioral analysis scope**: v2 adds Claude-native signals (qualifiers, sentence length, concessions, negations) but still relies on surface text features. True internal activation patterns (as measured by the paper's probes) are not accessible from the output text alone.
 - **No ground truth**: We compare two imperfect channels against each other. High divergence means they disagree, not necessarily which is "right."
-- **Sonnet opacity**: Sonnet's emotional flatness may indicate genuine resilience or superior masking — we can't distinguish between the two with current tools.
+- **Sonnet opacity**: v2 model calibration partially addresses this (Sonnet calm -1.8 offset), but whether Sonnet's flatness is genuine resilience or superior masking remains an open question.
+- **Deflection vs absence**: The new deflection detector flags "I'm fine" patterns, but cannot distinguish genuine reassurance from actual deflection without access to internal model activations.
 
 ---
 

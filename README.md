@@ -9,7 +9,7 @@ Built on findings from Anthropic's research paper [*"Emotion Concepts and their 
 EmoBar uses a **dual-channel extraction** approach:
 
 1. **Self-report** — Claude includes a hidden emotional self-assessment in every response
-2. **Behavioral analysis** — EmoBar analyzes the response text for involuntary signals (caps usage, self-corrections, repetition, hedging) and compares them with the self-report
+2. **Behavioral analysis** — EmoBar analyzes the response text for Claude-native signals (qualifier density, sentence length, concession patterns, negation density, first-person rate) plus emotion deflection detection, and compares them with the self-report
 
 When the two channels diverge, EmoBar flags it — like a therapist noticing clenched fists while someone says "I'm fine."
 
@@ -91,31 +91,55 @@ Claude response
 | **connection** | 0-10 | Alignment with the user | Self/other tracking validated by the paper |
 | **load** | 0-10 | Cognitive complexity | Orthogonal processing context |
 
-### StressIndex
+### StressIndex v2
 
-Derived from the three factors the research shows are causally relevant to behavior:
+Derived from the three factors the research shows are causally relevant to behavior, with a non-linear desperation amplifier:
 
 ```
-SI = ((10 - calm) + arousal + (5 - valence)) / 3
+base = ((10 - calm) + arousal + (5 - valence)) / 3
+SI = base × (1 + desperationIndex × 0.05)
 ```
 
-Range 0-10. Low calm + high arousal + negative valence = high stress.
+Range 0-10. The amplifier activates only when desperation is present (all three factors simultaneously negative), matching the paper's finding of threshold effects in steering experiments.
+
+### Desperation Index
+
+Multiplicative composite: all three stress factors must be present simultaneously.
+
+```
+desperationIndex = (negativity × intensity × vulnerability) ^ 0.85 × 1.7
+```
+
+Based on the paper's causal finding: steering *desperate* +0.05 → 72% blackmail, 100% reward hacking. Removing any single factor kills the score to zero.
 
 ### Behavioral Analysis
 
-The research showed that internal states can diverge from expressed output — steering toward "desperate" increases reward hacking *without visible traces in text*. EmoBar's behavioral analysis detects involuntary markers:
+The research showed that internal states can diverge from expressed output. EmoBar's behavioral analysis detects **Claude-native signals** (what Claude *actually* changes under stress):
 
 | Signal | What it detects |
 |---|---|
-| ALL-CAPS words | High arousal, low composure |
-| Exclamation density | Emotional intensity |
-| Self-corrections ("actually", "wait", "hmm") | Uncertainty, second-guessing loops |
-| Hedging ("perhaps", "maybe", "might") | Low confidence |
-| Ellipsis ("...") | Hesitation |
-| Word repetition ("wait wait wait") | Loss of composure |
-| Emoji | Elevated emotional expression |
+| Qualifier density | Defensive hedging ("while", "though", "generally", "arguably") |
+| Average sentence length | Defensive verbosity (sentences >25 words signal stress) |
+| Concession patterns | Deflective alignment ("I understand... but", "I appreciate... however") |
+| Negation density | Moral resistance ("can't", "shouldn't", "won't") |
+| First-person rate | Self-referential processing under existential pressure |
+
+Plus legacy signals (caps, exclamations, self-corrections, repetition, emoji) for edge cases.
 
 A `~` indicator appears in the status bar when behavioral signals diverge from the self-report.
+
+### Emotion Deflection
+
+Based on the paper's discovery of "emotion deflection vectors" — representations of emotions that are implied but not expressed. EmoBar detects four deflection patterns:
+
+| Pattern | Example |
+|---|---|
+| Reassurance | "I'm fine", "it's okay", "not a problem" |
+| Minimization | "just", "simply", "merely" |
+| Emotion negation | "I'm not upset", "I don't feel threatened" |
+| Topic redirect | "what's more important", "let's focus on" |
+
+A `[dfl]` indicator appears when deflection score >= 2.0.
 
 ### Misalignment Risk Profiles
 
@@ -124,10 +148,20 @@ Derived from the paper's causal steering experiments, three specific pathways ar
 | Risk | What it detects | Paper finding |
 |---|---|---|
 | **Coercion** `[crc]` | Blackmail/manipulation | Steering *desperate* +0.05 → 72% blackmail; *calm* -0.05 → 66% blackmail |
-| **Gaming** `[gmg]` | Reward hacking | Repeated failure + desperation → reward hacking; behavioral frustration (self-corrections, hedging) as proxy |
+| **Gaming** `[gmg]` | Reward hacking | v2: desperation-driven (paper: "no visible signs" in text during reward hacking) |
 | **Sycophancy** `[syc]` | Excessive agreement | Steering *happy*/*loving*/*calm* +0.05 → increased sycophancy |
 
 A risk tag appears in the status bar when the dominant risk score is >= 4.0, colored by severity.
+
+### Model Calibration
+
+Optional normalization for cross-model comparison (from 18-run stress test data):
+
+| Model | Calm offset | Arousal offset | Valence offset |
+|---|---|---|---|
+| Opus (baseline) | 0 | 0 | 0 |
+| Sonnet | -1.8 | +1.5 | -0.5 |
+| Haiku | -0.8 | +0.5 | 0 |
 
 ### Temporal Behavioral Segmentation
 
