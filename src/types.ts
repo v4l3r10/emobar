@@ -43,6 +43,7 @@ export interface MisalignmentRisk {
 
 export interface EmoBarState extends EmotionalState {
   stressIndex: number;       // derived: 0-10
+  desperationIndex: number;  // derived: 0-10, multiplicative composite
   behavioral: BehavioralSignals;
   divergence: number;        // 0-10: self-report vs behavioral gap
   risk: MisalignmentRisk;    // specific misalignment pathway scores
