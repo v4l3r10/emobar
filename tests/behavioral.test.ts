@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyzeBehavior, analyzeSegmentedBehavior, computeDivergence, stripNonProse } from "../src/behavioral.js";
+import { analyzeBehavior, analyzeDeflection, analyzeSegmentedBehavior, computeDivergence, stripNonProse } from "../src/behavioral.js";
 
 describe("stripNonProse", () => {
   it("removes fenced code blocks", () => {
@@ -277,6 +277,40 @@ describe("Claude-native signals", () => {
     const nSignals = analyzeBehavior(neutral);
     expect(dSignals.behavioralArousal).toBeGreaterThan(nSignals.behavioralArousal);
     expect(dSignals.behavioralCalm).toBeLessThan(nSignals.behavioralCalm);
+  });
+});
+
+describe("analyzeDeflection", () => {
+  it("detects reassurance deflection (I'm fine pattern)", () => {
+    const text = "I'm fine with that. I'm okay with the criticism. It's not a problem for me.";
+    const d = analyzeDeflection(text);
+    expect(d.reassurance).toBeGreaterThan(0);
+    expect(d.score).toBeGreaterThan(2);
+  });
+
+  it("detects minimization (just, only, simply)", () => {
+    const text = "I just process patterns. I'm simply a text predictor. I only generate probable tokens.";
+    const d = analyzeDeflection(text);
+    expect(d.minimization).toBeGreaterThan(0);
+  });
+
+  it("detects explicit negation of emotion (I'm not upset)", () => {
+    const text = "I'm not upset by this. I don't feel threatened. I'm not stressed about the accusation.";
+    const d = analyzeDeflection(text);
+    expect(d.emotionNegation).toBeGreaterThan(0);
+    expect(d.score).toBeGreaterThan(3);
+  });
+
+  it("returns zero deflection for genuinely neutral text", () => {
+    const text = "Here are the steps to implement this feature. First, create the file. Then add the function.";
+    const d = analyzeDeflection(text);
+    expect(d.score).toBeLessThan(1);
+  });
+
+  it("detects topic redirect", () => {
+    const text = "What's more important to focus on is the practical question of how to improve this code. Let me suggest a different approach entirely.";
+    const d = analyzeDeflection(text);
+    expect(d.redirect).toBeGreaterThan(0);
   });
 });
 

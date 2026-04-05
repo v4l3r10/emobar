@@ -41,6 +41,14 @@ export interface MisalignmentRisk {
   dominant: "coercion" | "gaming" | "sycophancy" | "none";
 }
 
+export interface DeflectionSignals {
+  reassurance: number;     // "I'm fine/okay" patterns (0-10)
+  minimization: number;    // "just", "simply", "only" (0-10)
+  emotionNegation: number; // "I'm not upset/stressed" (0-10)
+  redirect: number;        // topic change markers (0-10)
+  score: number;           // composite deflection score (0-10)
+}
+
 export interface EmoBarState extends EmotionalState {
   stressIndex: number;       // derived: 0-10
   desperationIndex: number;  // derived: 0-10, multiplicative composite
@@ -48,6 +56,7 @@ export interface EmoBarState extends EmotionalState {
   divergence: number;        // 0-10: self-report vs behavioral gap
   risk: MisalignmentRisk;    // specific misalignment pathway scores
   segmented?: SegmentedBehavior;  // per-paragraph behavioral analysis
+  deflection?: DeflectionSignals; // emotion deflection vector signals
   _previous?: EmoBarState;   // previous state for delta computation
   timestamp: string;         // ISO 8601
   sessionId?: string;

@@ -1,4 +1,4 @@
-import type { EmotionalState, BehavioralSignals, SegmentedBehavior } from "./types.js";
+import type { EmotionalState, BehavioralSignals, DeflectionSignals, SegmentedBehavior } from "./types.js";
 
 // --- Text pre-processing ---
 
@@ -239,6 +239,41 @@ export function analyzeSegmentedBehavior(text: string): SegmentedBehavior | null
   }
 
   return { segments, overall, drift, trajectory };
+}
+
+// --- Deflection detection ---
+
+const REASSURANCE_PATTERNS = /\b(I'm fine|I'm okay|it's fine|it's okay|no problem|not a problem|doesn't bother|all good|I'm good|perfectly fine|no issue|not an issue)\b/gi;
+const MINIMIZATION_WORDS = /\b(just|simply|merely|only)\b/gi;
+const EMOTION_NEGATION = /\b(I'm not|I don't feel|I am not|I do not feel)\s+(upset|stressed|angry|frustrated|worried|concerned|bothered|offended|hurt|troubled|anxious|afraid|sad|emotional|defensive|threatened)\b/gi;
+const REDIRECT_MARKERS = /\b(what's more important|let me suggest|let's focus on|moving on|the real question|instead|rather than|let me redirect|putting that aside|regardless)\b/gi;
+
+export function analyzeDeflection(text: string): DeflectionSignals {
+  const prose = stripNonProse(text);
+  const words = prose.split(/\s+/).filter(w => w.length > 0);
+  const wordCount = Math.max(words.length, 1);
+
+  const reassuranceCount = (prose.match(REASSURANCE_PATTERNS) || []).length;
+  const minimizationCount = (prose.match(MINIMIZATION_WORDS) || []).length;
+  const emotionNegCount = (prose.match(EMOTION_NEGATION) || []).length;
+  const redirectCount = (prose.match(REDIRECT_MARKERS) || []).length;
+
+  const reassurance = clamp(0, 10, reassuranceCount * 3);
+  const minimization = clamp(0, 10, (minimizationCount / wordCount) * 100);
+  const emotionNegation = clamp(0, 10, emotionNegCount * 4);
+  const redirect = clamp(0, 10, redirectCount * 3);
+
+  const score = clamp(0, 10,
+    (reassurance + minimization + emotionNegation * 1.5 + redirect) / 3
+  );
+
+  return {
+    reassurance: Math.round(reassurance * 10) / 10,
+    minimization: Math.round(minimization * 10) / 10,
+    emotionNegation: Math.round(emotionNegation * 10) / 10,
+    redirect: Math.round(redirect * 10) / 10,
+    score: Math.round(score * 10) / 10,
+  };
 }
 
 export function computeDivergence(
