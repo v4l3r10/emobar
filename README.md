@@ -37,13 +37,27 @@ Add a custom-command widget pointing to:
 npx emobar display
 ```
 
-### Other status bars
+### Display formats
+
+Three granularity levels:
 
 ```bash
-npx emobar display          # Full:    focused +3 | A:4 C:8 K:9 L:6 | SI:2.3
-npx emobar display compact  # Compact: focused +3 . 4 8 9 6 . 2.3
-npx emobar display minimal  # Minimal: SI:2.3 focused
+npx emobar display minimal  # 😌 ████░░░░░░ 2.3
+npx emobar display compact  # 😊→😰 ████████░░ 5.3 ◐ focused ⟨hold the line⟩ [CRC]
+npx emobar display          # Full: 3-line investigation mode (see below)
 ```
+
+**Minimal** — one glance: state emoji + stress bar + SI number.
+
+**Compact** — working context: surface→latent emoji, stress bar, coherence glyph (● aligned / ◐ split), shadow bar (when divergent), keyword, impulse, top alarm.
+
+**Full** — investigation mode (3 lines):
+```
+😊⟩3⟨😰 focused +3 ⟨push through⟩ [tight chest]
+██████████ SI:5.3↑1.2    ░░░░░█████ SH:4.8 [MIN:2.5]
+A:4 C:8 K:9 L:6 | ●#5C0000 pH:1 ⚡6/15/2 | ~ ⬈ [CRC]
+```
+Line 1: emotional identity. Line 2: self vs shadow stress bars. Line 3: dimensions + continuous channels + indicators.
 
 ### Programmatic
 
