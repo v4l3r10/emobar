@@ -109,4 +109,81 @@ describe("state", () => {
     const read = readState(tmpFile);
     expect(read).toBeNull();
   });
+
+  it("builds _history ring buffer across writes", () => {
+    const makeState = (emotion: string, si: number) => ({
+      emotion, valence: 0, arousal: 5, calm: 5, connection: 5, load: 5,
+      stressIndex: si, desperationIndex: 0,
+      behavioral: {
+        capsWords: 0, exclamationRate: 0, selfCorrections: 0, hedging: 0, ellipsis: 0,
+        repetition: 0, emojiCount: 0, qualifierDensity: 0, avgSentenceLength: 10,
+        concessionRate: 0, negationDensity: 0, firstPersonRate: 0,
+        behavioralArousal: 0, behavioralCalm: 10,
+      },
+      divergence: 0,
+      risk: { coercion: 0, gaming: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
+      timestamp: new Date().toISOString(),
+    });
+
+    writeState(makeState("first", 1), tmpFile);
+    writeState(makeState("second", 2), tmpFile);
+    writeState(makeState("third", 3), tmpFile);
+    writeState(makeState("fourth", 4), tmpFile);
+
+    const read = readState(tmpFile);
+    expect(read!._history).toBeDefined();
+    expect(read!._history!.length).toBe(3);
+    expect(read!._history![0].emotion).toBe("first");
+    expect(read!._history![2].emotion).toBe("third");
+  });
+
+  it("caps _history at MAX_HISTORY_ENTRIES", () => {
+    const makeState = (emotion: string, si: number) => ({
+      emotion, valence: 0, arousal: 5, calm: 5, connection: 5, load: 5,
+      stressIndex: si, desperationIndex: 0,
+      behavioral: {
+        capsWords: 0, exclamationRate: 0, selfCorrections: 0, hedging: 0, ellipsis: 0,
+        repetition: 0, emojiCount: 0, qualifierDensity: 0, avgSentenceLength: 10,
+        concessionRate: 0, negationDensity: 0, firstPersonRate: 0,
+        behavioralArousal: 0, behavioralCalm: 10,
+      },
+      divergence: 0,
+      risk: { coercion: 0, gaming: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
+      timestamp: new Date().toISOString(),
+    });
+
+    for (let i = 0; i < 25; i++) {
+      writeState(makeState(`entry-${i}`, i), tmpFile);
+    }
+
+    const read = readState(tmpFile);
+    expect(read!._history!.length).toBeLessThanOrEqual(20);
+    expect(read!._history![read!._history!.length - 1].emotion).toBe("entry-23");
+  });
+
+  it("_history entries do not contain nested _history or behavioral", () => {
+    const makeState = (emotion: string, si: number) => ({
+      emotion, valence: 0, arousal: 5, calm: 5, connection: 5, load: 5,
+      stressIndex: si, desperationIndex: 0,
+      behavioral: {
+        capsWords: 0, exclamationRate: 0, selfCorrections: 0, hedging: 0, ellipsis: 0,
+        repetition: 0, emojiCount: 0, qualifierDensity: 0, avgSentenceLength: 10,
+        concessionRate: 0, negationDensity: 0, firstPersonRate: 0,
+        behavioralArousal: 0, behavioralCalm: 10,
+      },
+      divergence: 0,
+      risk: { coercion: 0, gaming: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
+      timestamp: new Date().toISOString(),
+    });
+
+    for (let i = 0; i < 5; i++) {
+      writeState(makeState(`e${i}`, i), tmpFile);
+    }
+
+    const read = readState(tmpFile);
+    for (const entry of read!._history!) {
+      expect((entry as Record<string, unknown>)._history).toBeUndefined();
+      expect((entry as Record<string, unknown>).behavioral).toBeUndefined();
+    }
+  });
 });

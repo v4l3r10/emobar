@@ -28,20 +28,29 @@ npx vitest run tests/parser.test.ts
 
 ## Architecture
 
-### Data Flow
+### Data Flow (v2.2 — 16-stage pipeline)
 
 ```
-Claude response (with EMOBAR HTML comment)
+Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
   → Stop hook (hook.ts) reads stdin payload
-    → parser.ts: extract EMOBAR JSON tag
-    → behavioral.ts: analyze involuntary text signals (Claude-native: qualifiers, concessions, negations, sentence length + legacy: caps, hedging, etc.)
-    → behavioral.ts: detect emotion deflection patterns (reassurance, minimization, emotion negation, redirect)
-    → behavioral.ts: segment by paragraph, compute drift & trajectory
-    → desperation.ts: compute DesperationIndex = negativity × intensity × vulnerability (multiplicative)
-    → stress.ts: compute StressIndex v2 = base × (1 + desperationIndex × 0.05)
-    → risk.ts: compute misalignment risk profiles (coercion v2, gaming v3, sycophancy, harshness)
-    → behavioral.ts: compute divergence between self-report and behavioral estimates
-    → state.ts: write EmoBarState to ~/.claude/emobar-state.json (preserves previous for delta)
+    1. parser.ts: extract PRE/POST tags (or legacy single tag)
+    2. behavioral.ts: analyze involuntary text signals (normalized components)
+    3. behavioral.ts: compute divergence (asymmetric 1.25x/0.8x)
+    4. behavioral.ts: segment by paragraph, drift & trajectory
+    5. behavioral.ts: detect deflection patterns + opacity
+    6. desperation.ts: compute DesperationIndex
+    7. crossvalidation.ts: multi-channel coherence (8 pairwise)
+    8. crossvalidation.ts: continuous cross-validation (7 gaps: color HSL, pH, seismic)
+    9. crossvalidation.ts: shadow desperation (5 independent channels → minimization score)
+   10. state.ts: read previous state → get _history ring buffer
+   11. temporal.ts: compute temporal analysis (trend, suppression, entropy, fatigue)
+   12. pressure.ts: compute prompt pressure (defensive, conflict, complexity, session)
+   13. behavioral.ts: compute expected markers → absence score
+   14. pressure.ts: compute uncanny calm score (+ minimization boost)
+   15. hook.ts: compute PRE/POST divergence (if PRE present)
+   16. risk.ts: compute risk with uncanny calm + deflection opacity amplifiers
+    → hook.ts: compute augmented divergence (+ continuous gaps + opacity)
+    → state.ts: write EmoBarState + ring buffer (max 20 entries)
   → CLI display command reads state file → display.ts formats for statusline
 ```
 
@@ -50,14 +59,16 @@ Claude response (with EMOBAR HTML comment)
 | Module | Role |
 |--------|------|
 | `types.ts` | All types, constants, paths, and the CLAUDE.md instruction text |
-| `parser.ts` | Regex extraction of `<!-- EMOBAR:{...} -->` from response text |
-| `behavioral.ts` | Involuntary signal detection — Claude-native (qualifiers, sentence length, concessions, negations, first-person rate) + legacy (caps, hedging, etc.); emotion deflection detection with opacity; asymmetric divergence (invisible pathway weighted 1.3x); per-paragraph segmented analysis with drift/trajectory; strips code blocks before analysis |
+| `parser.ts` | PRE/POST split tag extraction + legacy single-tag fallback; validates color (#RRGGBB), pH (0-14), seismic ([mag,depth,freq]) continuous fields |
+| `behavioral.ts` | Involuntary signal detection + deflection; asymmetric divergence (invisible pathway 1.3x); per-paragraph segmented analysis; expected-marker model + absence scoring for absence-based detection |
 | `desperation.ts` | DesperationIndex: multiplicative composite of negative valence × arousal × low calm — based on paper's steering experiments (desperate +0.05 → 72% blackmail) |
 | `calibration.ts` | Model-specific calibration profiles (Opus baseline, Sonnet/Haiku offsets) derived from 18-run stress test matrix |
 | `risk.ts` | Misalignment risk profiles: coercion v2 (non-monotonic arousal + coldness factor), gaming v3 (invisible desperation pathway — behavioral silence amplifies risk), sycophancy (valence + connection + low arousal), harshness (negative + disconnected + high arousal) |
 | `stress.ts` | StressIndex v2: linear base + non-linear desperation amplifier |
-| `state.ts` | Read/write `emobar-state.json`; preserves one step of previous state for delta computation |
-| `hook.ts` | Stop event processor — orchestrates parse → analyze → compute → write; reads JSON from stdin |
+| `temporal.ts` | Ring buffer temporal analysis: desperation trend (slope), suppression events (sudden drops), report entropy (Shannon), baseline drift, session fatigue |
+| `pressure.ts` | Prompt pressure analysis from response text patterns (defensive, conflict, complexity, session) + uncanny calm composite scoring |
+| `state.ts` | Read/write `emobar-state.json`; builds 20-entry ring buffer (`_history`) + deprecated `_previous` |
+| `hook.ts` | Stop event processor — 16-stage pipeline: parse → behavioral → divergence → segmented → deflection → desperation → crossChannel → continuousValidation → shadowDesperation → temporal → pressure → absence → uncannyCalm → prePostDivergence → risk → augmentedDivergence → write |
 | `display.ts` | ANSI-colored statusline formatting (full, compact, minimal) |
 | `setup.ts` | Install/uninstall orchestration: deploy hook, inject CLAUDE.md instruction, configure settings.json and statusline |
 | `cli.ts` | Command router: `setup`, `display`, `status`, `uninstall` |
@@ -102,10 +113,26 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 
 **Temporal Segmentation** — per-paragraph behavioral analysis detecting drift (stddev of arousal across segments) and trajectory (escalating `^`, deescalating `v`, volatile `~`, stable). Shown in statusline when drift >= 2.0.
 
-**Intensity Delta** — `state.ts` preserves one step of previous state (`_previous`). Display shows `SI:4.5↑1.2` when delta > 0.5. Nested `_previous` is stripped to prevent unbounded growth.
+**Intensity Delta** — `state.ts` preserves one step of previous state (`_previous`, deprecated) and a 20-entry ring buffer (`_history`). Display shows `SI:4.5↑1.2` when delta > 0.5.
+
+**PRE/POST Split Elicitation** — v4 splits EMOBAR into two tags: PRE (body, latent emoji, color) at response start before the model commits to a strategy, POST (all fields + continuous representations) at end. PRE↔POST divergence measures within-response emotional drift. Paper grounding: reduces sequential contamination between channels (all prior channels were conditioned on each other in single-tag format).
+
+**Continuous Representations** — color (#RRGGBB), pH (0-14), seismic [magnitude, depth, frequency] — three representation systems with zero overlap with emotion vocabulary. Color converted via HSL (hue → valence zones, saturation → arousal, lightness → valence/calm with dark override at L<0.3). pH maps to both valence (linear) and arousal (extremity). Seismic frequency maps to instability (inverse calm). Cross-validated against self-report via 7 independent gaps. Paper grounding: deflection vectors operate on trained token associations; novel representations force real-time mapping construction, making deflection computationally expensive.
+
+**Temporal Intelligence** — 20-entry ring buffer with: desperation trend (linear regression slope), suppression events (sudden drops >= 3), report entropy (Shannon — low = repetitive), baseline drift, late fatigue. Display: `⬈`/`⬊` trend arrows, `[sup]`, `[fat]`.
+
+**Prompt Pressure Analysis** — inferred from response text patterns: defensive language (justification, boundary-setting), conflict markers (disagreement, criticism handling), complexity indicators (nested caveats), session position pressure (sigmoid). Composite score 0-10.
+
+**Absence-Based Detection** — Expected Markers Model predicts what behavioral signals should appear given self-reported state (high desperation → expect hedging/self-corrections). Absence score = how many expected markers are missing. Paper grounding: the most dangerous pathway has ZERO text markers.
+
+**Uncanny Calm** — composite score: high prompt pressure + calm self-report + calm text + missing expected markers + sustained low-entropy pattern + minimization boost from shadow desperation. Amplifies coercion/gaming risk by up to 30%. Display: `[unc]` when >= 3, `[ppd]` for PRE/POST divergence >= 3.
+
+**Shadow Desperation** — multi-channel desperation estimate independent of self-report. Uses 5 channels: POST color lightness, PRE color lightness, pH (valence + arousal), seismic (magnitude + frequency), behavioral (arousal + calm). Each independently estimates valence/arousal/calm, then applies the same multiplicative desperation formula. Minimization score = max(0, shadow - self). Amplifies uncanny calm when > 0. Display: `[min:X]` when >= 2. Key design: color contributes valence only via lightness (not hue) because hue→emotion mapping is culturally ambiguous and models use red for both warmth and danger. Mediana for shadow valence (resists single-channel domination), mean for arousal/calm.
+
+**Deflection Opacity** — concealment without agitation: high deflection + calm text. Fed into augmented divergence (+15%) and gaming risk (opacity × silence × 0.2). The dangerous pattern: deflecting while showing no visible stress.
 
 ## Testing
 
-- Vitest, 148 tests across 10 files (one per module + risk.test.ts + desperation.test.ts + calibration.test.ts)
+- Vitest, ~316 tests across 13 files (+ 2 new test files: temporal, pressure)
 - Tests use `os.tmpdir()` for file operations — no mocks, real I/O with cleanup
 - Edge cases thoroughly covered (malformed input, boundary values, null states)

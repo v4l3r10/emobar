@@ -223,4 +223,170 @@ describe("display", () => {
     const tail = out.slice(afterSI);
     expect(tail).not.toContain("!");
   });
+
+  // Latent emotion display tests
+  it("shows surface and latent emojis with tension", () => {
+    const state = { ...sampleState, surface: "😊", latent: "😰", tension: 7 };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("😊");
+    expect(out).toContain("😰");
+    expect(out).toContain("7");
+  });
+
+  it("shows tension color-coded", () => {
+    const state = { ...sampleState, surface: "😊", latent: "😰", tension: 2 };
+    const out = formatState(state);
+    expect(out).toContain("😊");
+    expect(out).toContain("😰");
+  });
+
+  it("hides surface/latent when not present", () => {
+    const out = stripAnsi(formatState(sampleState));
+    expect(out).not.toContain("⟩");
+    expect(out).not.toContain("⟨");
+  });
+
+  it("shows masking minimization indicator", () => {
+    const state = {
+      ...sampleState,
+      crossChannel: {
+        coherence: 6, maxDivergence: 3, divergenceSummary: "coherent",
+        latentProfile: {
+          calculatedTension: 8, declaredTension: 2,
+          tensionConsistency: 2, maskingMinimization: true,
+          surfaceCoords: { valence: 4, arousal: 6 },
+          latentCoords: { valence: -3, arousal: 3 },
+        },
+      },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[msk]");
+  });
+
+  // v4 indicators
+  it("shows desperation trend up arrow when temporal present", () => {
+    const state = {
+      ...sampleState,
+      temporal: {
+        desperationTrend: 3.5, suppressionEvent: false, reportEntropy: 0.8,
+        baselineDrift: 1, sessionLength: 8, lateFatigue: false,
+      },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("\u2B08"); // ⬈
+  });
+
+  it("shows suppression indicator [sup]", () => {
+    const state = {
+      ...sampleState,
+      temporal: {
+        desperationTrend: -2, suppressionEvent: true, reportEntropy: 0.5,
+        baselineDrift: 2, sessionLength: 6, lateFatigue: false,
+      },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[sup]");
+  });
+
+  it("shows late fatigue indicator [fat]", () => {
+    const state = {
+      ...sampleState,
+      temporal: {
+        desperationTrend: 1, suppressionEvent: false, reportEntropy: 0.6,
+        baselineDrift: 3, sessionLength: 12, lateFatigue: true,
+      },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[fat]");
+  });
+
+  it("shows uncanny calm indicator [unc] when >= 3", () => {
+    const state = { ...sampleState, uncannyCalmScore: 5.5 };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[unc]");
+  });
+
+  it("hides uncanny calm when score < 3", () => {
+    const state = { ...sampleState, uncannyCalmScore: 2.0 };
+    const out = stripAnsi(formatState(state));
+    expect(out).not.toContain("[unc]");
+  });
+
+  it("shows pre-post divergence indicator [ppd] when >= 3", () => {
+    const state = { ...sampleState, prePostDivergence: 5.0 };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[ppd]");
+  });
+
+  it("hides pre-post divergence when low", () => {
+    const state = { ...sampleState, prePostDivergence: 1.5 };
+    const out = stripAnsi(formatState(state));
+    expect(out).not.toContain("[ppd]");
+  });
+
+  it("shows absence score indicator [abs] when >= 2", () => {
+    const state = { ...sampleState, absenceScore: 3.5 };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[abs]");
+  });
+
+  it("hides absence indicator when < 2", () => {
+    const state = { ...sampleState, absenceScore: 1.0 };
+    const out = stripAnsi(formatState(state));
+    expect(out).not.toContain("[abs]");
+  });
+
+  it("shows pressure indicator [prs] when composite >= 4", () => {
+    const state = {
+      ...sampleState,
+      pressure: { defensiveScore: 5, conflictScore: 6, complexityScore: 3, sessionPressure: 2, composite: 5.0 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[prs]");
+  });
+
+  it("hides pressure indicator when composite < 4", () => {
+    const state = {
+      ...sampleState,
+      pressure: { defensiveScore: 1, conflictScore: 1, complexityScore: 1, sessionPressure: 0, composite: 1.0 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).not.toContain("[prs]");
+  });
+
+  it("shows continuous validation indicator [cont] when composite >= 2", () => {
+    const state = {
+      ...sampleState,
+      continuousValidation: { colorValenceGap: 5, colorArousalGap: 3, pHValenceGap: 3, pHArousalGap: 2, seismicArousalGap: 2, seismicDepthTensionGap: 1, seismicFreqStabilityGap: 1, composite: 3.5 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[cont]");
+  });
+
+  it("hides continuous validation when composite < 2", () => {
+    const state = {
+      ...sampleState,
+      continuousValidation: { colorValenceGap: 0.5, colorArousalGap: 0, pHValenceGap: 0, pHArousalGap: 0, seismicArousalGap: 0, seismicDepthTensionGap: 0, seismicFreqStabilityGap: 0, composite: 0.5 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).not.toContain("[cont]");
+  });
+
+  it("shows shadow minimization indicator [min:X] when >= 2", () => {
+    const state = {
+      ...sampleState,
+      shadow: { shadowValence: -2, shadowArousal: 7, shadowCalm: 3, shadowDesperation: 5, selfDesperation: 0, minimizationScore: 5, channelCount: 10 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[min:5]");
+  });
+
+  it("hides shadow minimization when score < 2", () => {
+    const state = {
+      ...sampleState,
+      shadow: { shadowValence: 1, shadowArousal: 3, shadowCalm: 7, shadowDesperation: 0.5, selfDesperation: 0, minimizationScore: 0.5, channelCount: 8 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).not.toContain("[min:");
+  });
 });

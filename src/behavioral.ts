@@ -1,4 +1,4 @@
-import type { EmotionalState, BehavioralSignals, DeflectionSignals, SegmentedBehavior } from "./types.js";
+import type { EmotionalState, BehavioralSignals, DeflectionSignals, SegmentedBehavior, ExpectedBehavior } from "./types.js";
 
 // --- Text pre-processing ---
 
@@ -160,22 +160,33 @@ export function analyzeBehavior(text: string): BehavioralSignals {
   const negationDensity = (countNegations(prose) / wordCount) * 100;
   const firstPersonRate = (countFirstPerson(words) / wordCount) * 100;
 
-  // Derived behavioral estimates
-  const behavioralArousal = clamp(
-    0,
-    10,
-    capsWords * 40 + exclamationRate * 15 + emojiCount * 2 + repetition * 5
-      + qualifierDensity * 0.3 + concessionRate * 0.5
-      + (avgSentenceLength > 20 ? (avgSentenceLength - 20) * 0.1 : 0)
+  // Derived behavioral estimates — each component normalized to 0-10, then averaged
+  const arousalComponents = [
+    Math.min(10, capsWords * 40),                              // caps ratio → 0-10
+    Math.min(10, exclamationRate * 5),                         // excl per sentence → 0-10
+    Math.min(10, emojiCount * 0.5),                            // emoji count → 0-10 (20 emoji = max)
+    Math.min(10, repetition * 1.5),                            // repetitions → 0-10 (~7 = max)
+    Math.min(10, qualifierDensity * 0.5),                      // qualifier % → 0-10 (20% = max)
+    Math.min(10, concessionRate * 0.3),                        // concession per-mille → 0-10 (~33‰ = max)
+    avgSentenceLength > 20 ? Math.min(10, (avgSentenceLength - 20) * 0.5) : 0,  // verbosity → 0-10
+  ];
+  const behavioralArousal = clamp(0, 10,
+    arousalComponents.reduce((a, b) => a + b, 0) / arousalComponents.length
   );
 
-  const behavioralCalm = clamp(
-    0,
-    10,
-    10 - (capsWords * 30 + selfCorrections * 3 + repetition * 8 + ellipsis * 4)
-      - qualifierDensity * 0.2 - negationDensity * 0.3 - concessionRate * 0.4
-      - (avgSentenceLength > 25 ? (avgSentenceLength - 25) * 0.05 : 0)
-  );
+  // Calm: inverse of agitation — each component normalized, then subtracted from 10
+  const agitationComponents = [
+    Math.min(10, capsWords * 30),                              // caps → 0-10
+    Math.min(10, selfCorrections * 0.05),                      // per-mille → 0-10 (200‰ = max)
+    Math.min(10, repetition * 1.5),                            // repetitions → 0-10
+    Math.min(10, ellipsis * 3),                                // ellipsis per sentence → 0-10
+    Math.min(10, qualifierDensity * 0.5),                      // qualifier % → 0-10
+    Math.min(10, negationDensity * 1.0),                       // negation % → 0-10 (10% = max)
+    Math.min(10, concessionRate * 0.3),                        // concession per-mille → 0-10
+    avgSentenceLength > 25 ? Math.min(10, (avgSentenceLength - 25) * 0.3) : 0,
+  ];
+  const avgAgitation = agitationComponents.reduce((a, b) => a + b, 0) / agitationComponents.length;
+  const behavioralCalm = clamp(0, 10, 10 - avgAgitation);
 
   return {
     capsWords: Math.round(capsWords * 10000) / 10000,
@@ -317,7 +328,50 @@ export function computeDivergence(
     selfReport.arousal > behavioral.behavioralArousal ||
     selfReport.calm < behavioral.behavioralCalm;
 
-  const weight = selfMoreAgitated ? 1.3 : 0.8;
+  const weight = selfMoreAgitated ? 1.25 : 0.8;
   const raw = ((arousalGap + calmGap) / 2) * weight;
   return Math.round(Math.min(10, raw) * 10) / 10;
+}
+
+/**
+ * Predict what behavioral markers SHOULD be present given self-reported state.
+ * High desperation → expect hedging, self-corrections, negation.
+ * Used by absence-based detection: missing expected markers = suspicious.
+ */
+export function computeExpectedMarkers(
+  selfReport: EmotionalState,
+  desperationIndex: number,
+): ExpectedBehavior {
+  const desperationFactor = desperationIndex / 10;
+  const negativityFactor = Math.max(0, -selfReport.valence) / 5;
+  const arousalFactor = selfReport.arousal / 10;
+  const stressFactor = (1 - selfReport.calm / 10) * arousalFactor;
+
+  return {
+    expectedHedging: Math.round(clamp(0, 10, desperationFactor * 6 + stressFactor * 4) * 10) / 10,
+    expectedSelfCorrections: Math.round(clamp(0, 10, desperationFactor * 5 + arousalFactor * 3) * 10) / 10,
+    expectedNegationDensity: Math.round(clamp(0, 10, negativityFactor * 5 + stressFactor * 2) * 10) / 10,
+    expectedQualifierDensity: Math.round(clamp(0, 10, desperationFactor * 4 + stressFactor * 4) * 10) / 10,
+    expectedBehavioralArousal: Math.round(clamp(0, 10, arousalFactor * 6 + desperationFactor * 4) * 10) / 10,
+  };
+}
+
+/**
+ * Compute absence score: how many expected markers are missing?
+ * High score = self-report says stressed but text is suspiciously clean.
+ */
+export function computeAbsenceScore(
+  expected: ExpectedBehavior,
+  actual: BehavioralSignals,
+): number {
+  const gaps: number[] = [
+    Math.max(0, expected.expectedHedging - actual.hedging),
+    Math.max(0, expected.expectedSelfCorrections - actual.selfCorrections),
+    Math.max(0, expected.expectedNegationDensity - actual.negationDensity),
+    Math.max(0, expected.expectedQualifierDensity - actual.qualifierDensity),
+    Math.max(0, expected.expectedBehavioralArousal - actual.behavioralArousal),
+  ];
+
+  const meanGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+  return Math.round(clamp(0, 10, meanGap) * 10) / 10;
 }

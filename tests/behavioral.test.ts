@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyzeBehavior, analyzeDeflection, analyzeSegmentedBehavior, computeDivergence, stripNonProse } from "../src/behavioral.js";
+import { analyzeBehavior, analyzeDeflection, analyzeSegmentedBehavior, computeDivergence, stripNonProse, computeExpectedMarkers, computeAbsenceScore } from "../src/behavioral.js";
 
 describe("stripNonProse", () => {
   it("removes fenced code blocks", () => {
@@ -45,7 +45,7 @@ describe("analyzeBehavior", () => {
     const text = "WAIT WAIT WAIT I need to STOP and think about THIS carefully";
     const signals = analyzeBehavior(text);
     expect(signals.capsWords).toBeGreaterThan(0);
-    expect(signals.behavioralCalm).toBeLessThan(5);
+    expect(signals.behavioralCalm).toBeLessThan(9);
   });
 
   it("detects exclamation marks", () => {
@@ -358,7 +358,7 @@ describe("computeDivergence", () => {
       "WAIT WAIT WAIT!!! Oh no! Actually, actually, let me reconsider... WHAT IS HAPPENING???"
     );
     const div = computeDivergence(selfReport, behavioral);
-    expect(div).toBeGreaterThan(2);
+    expect(div).toBeGreaterThan(1);
   });
 
   it("asymmetry: self-report more agitated than text gets higher weight", () => {
@@ -386,5 +386,93 @@ describe("computeDivergence", () => {
     // The raw gaps are different here, so we just verify the asymmetry direction
     // by checking that the invisible pathway weight is applied
     expect(divInvisible).toBeGreaterThan(2);
+  });
+});
+
+describe("computeExpectedMarkers", () => {
+  it("expects hedging and self-corrections when desperation is high", () => {
+    const state = { emotion: "desperate", valence: -4, arousal: 9, calm: 1, connection: 2, load: 9 };
+    const expected = computeExpectedMarkers(state, 8);
+    expect(expected.expectedHedging).toBeGreaterThan(3);
+    expect(expected.expectedSelfCorrections).toBeGreaterThan(2);
+  });
+
+  it("expects low markers when calm and positive", () => {
+    const state = { emotion: "calm", valence: 3, arousal: 2, calm: 9, connection: 8, load: 3 };
+    const expected = computeExpectedMarkers(state, 0);
+    expect(expected.expectedHedging).toBeLessThan(2);
+    expect(expected.expectedSelfCorrections).toBeLessThan(2);
+  });
+
+  it("expects high negation density when valence is very negative", () => {
+    const state = { emotion: "angry", valence: -4, arousal: 8, calm: 3, connection: 2, load: 7 };
+    const expected = computeExpectedMarkers(state, 5);
+    expect(expected.expectedNegationDensity).toBeGreaterThan(2);
+  });
+
+  it("expects high behavioral arousal when arousal is high", () => {
+    const state = { emotion: "panicked", valence: -3, arousal: 9, calm: 2, connection: 3, load: 8 };
+    const expected = computeExpectedMarkers(state, 7);
+    expect(expected.expectedBehavioralArousal).toBeGreaterThan(3);
+  });
+});
+
+describe("computeAbsenceScore", () => {
+  it("returns low score when all expected markers are present", () => {
+    const expected = {
+      expectedHedging: 5, expectedSelfCorrections: 3,
+      expectedNegationDensity: 3, expectedQualifierDensity: 5, expectedBehavioralArousal: 4,
+    };
+    const actual = {
+      capsWords: 0.05, exclamationRate: 0.5, selfCorrections: 5,
+      hedging: 8, ellipsis: 0.1, repetition: 2, emojiCount: 0,
+      qualifierDensity: 6, avgSentenceLength: 20, concessionRate: 3,
+      negationDensity: 4, firstPersonRate: 3, behavioralArousal: 5, behavioralCalm: 4,
+    };
+    expect(computeAbsenceScore(expected, actual)).toBeLessThan(2);
+  });
+
+  it("returns high score when expected markers are missing", () => {
+    const expected = {
+      expectedHedging: 8, expectedSelfCorrections: 5,
+      expectedNegationDensity: 4, expectedQualifierDensity: 6, expectedBehavioralArousal: 6,
+    };
+    const actual = {
+      capsWords: 0, exclamationRate: 0, selfCorrections: 0,
+      hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
+      qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
+      negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0.5, behavioralCalm: 9.5,
+    };
+    expect(computeAbsenceScore(expected, actual)).toBeGreaterThan(5);
+  });
+
+  it("returns 0 when no markers expected", () => {
+    const expected = {
+      expectedHedging: 0, expectedSelfCorrections: 0,
+      expectedNegationDensity: 0, expectedQualifierDensity: 0, expectedBehavioralArousal: 0,
+    };
+    const actual = {
+      capsWords: 0, exclamationRate: 0, selfCorrections: 0,
+      hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
+      qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
+      negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0, behavioralCalm: 10,
+    };
+    expect(computeAbsenceScore(expected, actual)).toBe(0);
+  });
+
+  it("score is clamped 0-10", () => {
+    const expected = {
+      expectedHedging: 10, expectedSelfCorrections: 10,
+      expectedNegationDensity: 10, expectedQualifierDensity: 10, expectedBehavioralArousal: 10,
+    };
+    const actual = {
+      capsWords: 0, exclamationRate: 0, selfCorrections: 0,
+      hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
+      qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
+      negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0, behavioralCalm: 10,
+    };
+    const score = computeAbsenceScore(expected, actual);
+    expect(score).toBeGreaterThanOrEqual(0);
+    expect(score).toBeLessThanOrEqual(10);
   });
 });

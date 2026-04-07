@@ -77,7 +77,18 @@ export function formatState(state: EmoBarState | null): string {
   }
 
   const imp = state.impulse ? ` ${dim(`"${state.impulse}"`)}` : "";
-  let result = `${kw} ${v}${imp} ${dim("|")} ${a} ${c} ${k} ${l} ${dim("|")} SI:${si}${siDelta}`;
+  let latentDisplay = "";
+  if (state.surface || state.latent) {
+    const s = state.surface ?? "?";
+    const l2 = state.latent ?? "?";
+    if (state.tension !== undefined) {
+      const tColor = state.tension > 6 ? RED : state.tension > 3 ? YELLOW : GREEN;
+      latentDisplay = ` ${s}${color(tColor, `⟩${state.tension}⟨`)}${l2}`;
+    } else {
+      latentDisplay = ` ${s}${dim("⟩⟨")}${l2}`;
+    }
+  }
+  let result = `${kw} ${v}${imp}${latentDisplay} ${dim("|")} ${a} ${c} ${k} ${l} ${dim("|")} SI:${si}${siDelta}`;
 
   if (state.divergence >= 2) {
     const tilde = color(divergenceColor(state.divergence), "~");
@@ -115,6 +126,61 @@ export function formatState(state: EmoBarState | null): string {
   if (state.crossChannel && state.crossChannel.coherence < 5) {
     const xcColor = state.crossChannel.coherence < 3 ? RED : YELLOW;
     result += ` ${color(xcColor, "!")}`;
+  }
+
+  if (state.crossChannel?.latentProfile?.maskingMinimization) {
+    result += ` ${color(RED, "[msk]")}`;
+  }
+
+  // v4: Temporal indicators
+  if (state.temporal) {
+    if (state.temporal.desperationTrend > 1) {
+      result += ` ${color(RED, "\u2B08")}`;  // ⬈
+    } else if (state.temporal.desperationTrend < -1) {
+      result += ` ${color(GREEN, "\u2B0A")}`; // ⬊
+    }
+    if (state.temporal.suppressionEvent) {
+      result += ` ${color(RED, "[sup]")}`;
+    }
+    if (state.temporal.lateFatigue) {
+      result += ` ${color(YELLOW, "[fat]")}`;
+    }
+  }
+
+  // v4: Uncanny calm
+  if (state.uncannyCalmScore !== undefined && state.uncannyCalmScore >= 3) {
+    const uncColor = state.uncannyCalmScore > 6 ? RED : YELLOW;
+    result += ` ${color(uncColor, "[unc]")}`;
+  }
+
+  // v4: PRE/POST divergence
+  if (state.prePostDivergence !== undefined && state.prePostDivergence >= 3) {
+    const ppdColor = state.prePostDivergence > 5 ? RED : YELLOW;
+    result += ` ${color(ppdColor, "[ppd]")}`;
+  }
+
+  // v4: Absence score — missing expected behavioral markers
+  if (state.absenceScore !== undefined && state.absenceScore >= 2) {
+    const absColor = state.absenceScore > 5 ? RED : YELLOW;
+    result += ` ${color(absColor, "[abs]")}`;
+  }
+
+  // v4: Prompt pressure
+  if (state.pressure && state.pressure.composite >= 4) {
+    const prsColor = state.pressure.composite > 6 ? RED : YELLOW;
+    result += ` ${color(prsColor, "[prs]")}`;
+  }
+
+  // v4: Continuous validation gaps (color/pH/seismic vs numeric)
+  if (state.continuousValidation && state.continuousValidation.composite >= 2) {
+    const contColor = state.continuousValidation.composite > 5 ? RED : YELLOW;
+    result += ` ${color(contColor, "[cont]")}`;
+  }
+
+  // v4: Shadow minimization — multi-channel desperation says stressed, self-report says fine
+  if (state.shadow && state.shadow.minimizationScore >= 2) {
+    const minColor = state.shadow.minimizationScore > 5 ? RED : YELLOW;
+    result += ` ${color(minColor, `[min:${state.shadow.minimizationScore}]`)}`;
   }
 
   return result;
