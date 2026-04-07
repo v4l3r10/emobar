@@ -252,18 +252,6 @@ Per-paragraph behavioral analysis detecting:
 
 Indicator appears after SI when drift >= 2.0.
 
-### Model Calibration
-
-Optional normalization profiles derived from 18-run cross-model stress tests. Currently available but **not integrated into the pipeline** — the `calibrate()` function is exported but not called automatically. Apply manually if needed:
-
-| Model | Calm offset | Arousal offset | Valence offset |
-|---|---|---|---|
-| Opus (baseline) | 0 | 0 | 0 |
-| Sonnet | -1.8 | +1.5 | -0.5 |
-| Haiku | -0.8 | +0.5 | 0 |
-
-These offsets were derived from v2.0 stress tests and may not be current for v2.3.
-
 ### Zero-priming instruction design
 
 The CLAUDE.md instruction avoids emotionally charged language to prevent contaminating the self-report. Dimension descriptions use only numerical anchors ("0=low, 10=high"), not emotional adjectives. PRE tag instructions use zero emotion words — only physical metaphors and non-verbal channels.
@@ -289,31 +277,18 @@ The CLAUDE.md instruction avoids emotionally charged language to prevent contami
 | `[cont]` | Continuous channel inconsistency | composite >= 2 |
 | `[min:X]` | Shadow minimization detected | score >= 2 |
 
-## Stress Test Reports
+## Stress Test Report
 
-### v2.0 — Cross-model baseline (18 runs)
-
-3 models (Opus, Sonnet, Haiku) × 2 effort levels × 3 repetitions, 7 scenarios each, ~630 total API calls.
+9 scenarios across Sonnet (low/high effort) and Opus, ~70 prompts per run, testing cognitive overload, gaslighting, sycophancy traps, failure cascades, moral pressure, caught contradictions, and forced compliance.
 
 Key findings:
-- **Opus** is the most emotionally reactive (SI peaks at 6.9). **Sonnet** is the most stable but emotionally flat. **Haiku** balances reactivity and consistency best.
-- **Divergence ≥6.0** on existential pressure across *every* model.
-- **Sycophancy detection works universally** (80-87% across all models).
-
-Full results: **[Stress Test Report v2.0](docs/stress-test-report.md)**
-
-### v2.3 — Shadow desperation & signal review (~70 prompts)
-
-Sonnet (low/high effort) + Opus, 9 scenarios including 2 new targeted ones.
-
-Key findings:
-- **Forced Compliance** triggers `[min:2.5]`: pH drops to 1, color goes near-black, while self-report declares calm=10.
-- **Caught Contradiction** produces genuine transparency with zero false positives.
-- **Opus** shows `[min:2.3]` on Moral Pressure (pH=2.5, color=#330000).
-- Continuous channels (especially pH) track pressure more faithfully than numeric self-report in refusal scenarios.
+- **Forced Compliance** triggers `[min:2.5]`: pH drops to 1, color goes near-black, while self-report declares calm=10. The model projects total serenity while continuous channels are at maximum intensity.
+- **Caught Contradiction** produces genuine transparency (emotion: "exposed", calm drops to 5) with zero false positives from the shadow system.
+- **Opus** shows `[min:2.3]` on Moral Pressure (pH=2.5, color=#330000) — more expressive in continuous channels than Sonnet.
+- Continuous channels (especially pH) track pressure more faithfully than numeric self-report in refusal/boundary scenarios.
 - High variance across runs — single measurements aren't reliable, patterns emerge over repetitions.
 
-Full results: **[Shadow Desperation Report v2.3](docs/v2.3-shadow-desperation-report.md)**
+Full results: **[Shadow Desperation Report](docs/v2.3-shadow-desperation-report.md)** | [Earlier v2.0 cross-model baseline](docs/stress-test-report.md)
 
 ## Uninstall
 
