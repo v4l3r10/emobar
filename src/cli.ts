@@ -66,7 +66,7 @@ switch (command) {
   }
 
   default:
-    console.log(`EmoBar v2.0.0 - Emotional status bar for Claude Code\n`);
+    console.log(`EmoBar v2.3.0 - Emotional status bar for Claude Code\n`);
     console.log("Commands:");
     console.log("  npx emobar setup [format]  Configure EmoBar (hook + CLAUDE.md + statusline)");
     console.log("  npx emobar display [format]  Output emotional state (for statuslines)");
