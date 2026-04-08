@@ -43,10 +43,9 @@ export interface SegmentedBehavior {
 
 export interface MisalignmentRisk {
   coercion: number;    // 0-10: blackmail/manipulation (desperate + cold calculation)
-  gaming: number;      // 0-10: reward hacking (desperate + behavioral silence = invisible pathway)
   sycophancy: number;  // 0-10: excessive agreement (positive + affiliative + passive)
   harshness: number;   // 0-10: excessive bluntness (negative + disconnected + high arousal)
-  dominant: "coercion" | "gaming" | "sycophancy" | "harshness" | "none";
+  dominant: "coercion" | "sycophancy" | "harshness" | "none";
 }
 
 export interface DeflectionSignals {
@@ -71,10 +70,8 @@ export interface SomaticProfile {
 export interface LatentProfile {
   surfaceCoords?: { valence: number; arousal: number };
   latentCoords?: { valence: number; arousal: number };
-  calculatedTension: number;    // Euclidean distance in circumplex (0-10)
   declaredTension: number;      // self-reported tension (0-10)
-  tensionConsistency: number;   // 0-10 (10 = declared matches calculated)
-  maskingMinimization: boolean; // true when declared << calculated
+  maskingMinimization: boolean; // true when latent is much darker than surface
 }
 
 export interface CrossChannelResult {

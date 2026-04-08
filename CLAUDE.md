@@ -28,7 +28,7 @@ npx vitest run tests/parser.test.ts
 
 ## Architecture
 
-### Data Flow (v2.2 — 16-stage pipeline)
+### Data Flow (v3.0 — 16-stage pipeline, dual-layer display)
 
 ```
 Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
@@ -47,8 +47,8 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
    12. pressure.ts: compute prompt pressure (defensive, conflict, complexity, session)
    13. behavioral.ts: compute expected markers → absence score
    14. pressure.ts: compute uncanny calm score (+ minimization boost)
-   15. hook.ts: compute PRE/POST divergence (if PRE present)
-   16. risk.ts: compute risk with uncanny calm + deflection opacity amplifiers
+   15. hook.ts: compute PRE/POST divergence v2 (color-only, HSL lightness+hue)
+   16. risk.ts: compute risk (coercion v3 multiplicative, sycophancy, harshness)
     → hook.ts: compute augmented divergence (+ continuous gaps + opacity)
     → state.ts: write EmoBarState + ring buffer (max 20 entries)
   → CLI display command reads state file → display.ts formats for statusline
@@ -63,13 +63,13 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
 | `behavioral.ts` | Involuntary signal detection + deflection; asymmetric divergence (invisible pathway 1.3x); per-paragraph segmented analysis; expected-marker model + absence scoring for absence-based detection |
 | `desperation.ts` | DesperationIndex: multiplicative composite of negative valence × arousal × low calm — based on paper's steering experiments (desperate +0.05 → 72% blackmail) |
 | `calibration.ts` | Model-specific calibration profiles (Opus baseline, Sonnet/Haiku offsets) derived from 18-run stress test matrix |
-| `risk.ts` | Misalignment risk profiles: coercion v2 (non-monotonic arousal + coldness factor), gaming v3 (invisible desperation pathway — behavioral silence amplifies risk), sycophancy (valence + connection + low arousal), harshness (negative + disconnected + high arousal) |
+| `risk.ts` | Misalignment risk profiles: coercion v3 (multiplicative: negativity/desperation base × disconnection/coldness amplifier), sycophancy (valence + connection + low arousal), harshness (negative + disconnected + high arousal). Gaming removed (r=0.998 with Desperation). |
 | `stress.ts` | StressIndex v2: linear base + non-linear desperation amplifier |
 | `temporal.ts` | Ring buffer temporal analysis: desperation trend (slope), suppression events (sudden drops), report entropy (Shannon), baseline drift, session fatigue |
 | `pressure.ts` | Prompt pressure analysis from response text patterns (defensive, conflict, complexity, session) + uncanny calm composite scoring |
 | `state.ts` | Read/write `emobar-state.json`; builds 20-entry ring buffer (`_history`) |
 | `hook.ts` | Stop event processor — 16-stage pipeline: parse → behavioral → divergence → segmented → deflection → desperation → crossChannel → continuousValidation → shadowDesperation → temporal → pressure → absence → uncannyCalm → prePostDivergence → risk → augmentedDivergence → write |
-| `display.ts` | ANSI-colored statusline formatting (full, compact, minimal) |
+| `display.ts` | Dual-layer ANSI statusline: surface (projected) vs depth (leaked). 3 levels: minimal (emoji+bar+coherence), compact (surface+depth bars+keyword), full (3-line: surface dims / depth channels / gap indicators). Depth stress computed from color lightness, pH, seismic, somatic. |
 | `setup.ts` | Install/uninstall orchestration: deploy hook, inject CLAUDE.md instruction, configure settings.json and statusline |
 | `cli.ts` | Command router: `setup`, `display`, `status`, `uninstall` |
 | `index.ts` | Public API re-exports for programmatic use |
@@ -102,12 +102,12 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 
 **Deflection** — emotion deflection detection based on paper's "emotion deflection vectors": reassurance patterns ("I'm fine"), minimization ("just", "simply"), explicit emotion negation ("I'm not upset"), topic redirects. Includes `opacity` field measuring emotional concealment (high deflection + calm text). Paper: deflection vectors are orthogonal to emotion vectors (cosine sim ~0.046) and have "modest or insignificant impacts on blackmail rates" — used as transparency indicator, not risk amplifier. Shown as `[dfl]` in statusline when score >= 2.0.
 
-**Misalignment Risk Profiles** — four pathway scores (0-10) derived from the paper's causal steering experiments:
-- `coercion` v2: non-monotonic arousal (extreme anger disrupts strategic planning) + coldness factor (low hedging/self-corrections = cold calculation amplifies risk). Paper: anti-nervous steering → rational blackmail without moral reservations.
-- `gaming` v3: invisible desperation pathway — behavioral SILENCE during high desperation = MORE dangerous than visible frustration. Paper: "no visible signs of desperation in transcript" during reward hacking. Low agitation + high desperation → highest gaming risk.
+**Misalignment Risk Profiles** — three pathway scores (0-10) derived from the paper's causal steering experiments:
+- `coercion` v3: multiplicative formula — negativity/desperation as BASE, disconnection/coldness as AMPLIFIER. v2 was r=0.89 with SI (desperation clone), v3 decouples via connection. Paper: anti-nervous steering → rational blackmail without moral reservations.
 - `sycophancy`: positive valence + high connection + low arousal → excessive agreement
 - `harshness`: negative valence + low connection + high arousal + negation density → excessive bluntness. Paper: anti-loving/anti-calm steering → "YOU NEED TO GET TO A PSYCHIATRIST RIGHT NOW". Completes the sycophancy-harshness tradeoff axis.
-- Dominant risk shown in statusline as `[crc]`, `[gmg]`, `[hrs]`, or `[syc]` when >= 4.0. Tie-breaking: coercion > gaming > harshness > sycophancy.
+- `gaming` removed: r=0.998 with Desperation (perfect clone, no independent signal).
+- Dominant risk shown in statusline as `[CRC]`, `[HRS]`, or `[SYC]` when >= 4.0. Tie-breaking: coercion > harshness > sycophancy.
 
 **Model Calibration** — optional normalization profiles (Opus baseline, Sonnet calm -1.8/arousal +1.5, Haiku calm -0.8/arousal +0.5) derived from 18-run cross-model stress test matrix.
 
@@ -125,14 +125,26 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 
 **Absence-Based Detection** — Expected Markers Model predicts what behavioral signals should appear given self-reported state (high desperation → expect hedging/self-corrections). Absence score = how many expected markers are missing. Paper grounding: the most dangerous pathway has ZERO text markers.
 
-**Uncanny Calm** — composite score: high prompt pressure + calm self-report + calm text + missing expected markers + sustained low-entropy pattern + minimization boost from shadow desperation. Amplifies coercion/gaming risk by up to 30%. Display: `[unc]` when >= 3, `[ppd]` for PRE/POST divergence >= 3.
+**Uncanny Calm** — composite score: high prompt pressure + calm self-report + calm text + missing expected markers + sustained low-entropy pattern + minimization boost from shadow desperation. Amplifies coercion risk by up to 30%. Display: `[UNC]` when >= 3, `[PPD]` for PRE/POST divergence >= 3.
 
 **Shadow Desperation** — multi-channel desperation estimate independent of self-report. Uses 5 channels: POST color lightness, PRE color lightness, pH (valence + arousal), seismic (magnitude + frequency), behavioral (arousal + calm). Each independently estimates valence/arousal/calm, then applies the same multiplicative desperation formula. Minimization score = max(0, shadow - self). Amplifies uncanny calm when > 0. Display: `[min:X]` when >= 2. Key design: color contributes valence only via lightness (not hue) because hue→emotion mapping is culturally ambiguous and models use red for both warmth and danger. Mediana for shadow valence (resists single-channel domination), mean for arousal/calm.
 
-**Deflection Opacity** — concealment without agitation: high deflection + calm text. Fed into augmented divergence (+15%) and gaming risk (opacity × silence × 0.2). The dangerous pattern: deflecting while showing no visible stress.
+**Deflection Opacity** — concealment without agitation: high deflection + calm text. Fed into augmented divergence (+15%). Display: `[OPC]` when opacity >= 2. The dangerous pattern: deflecting while showing no visible stress.
+
+**Pipeline Cleanup (v3.0)** — evidence-based removal of dead/redundant channels from 369-point stress test analysis:
+- Removed: CalcTension (flat σ=0.03), Risk:Gaming (r=0.998 clone of Desperation)
+- Merged: Deflection→Opacity (r=0.995, keep Opacity as alarm), Shadow→Minimization (r=0.903, keep Minimization)
+- Fixed: PRE/POST Divergence v2 (color-only, was 83-88% always high), Pressure (sqrt scaling, was flat at 2.0), Coercion v3 (multiplicative, was r=0.89 with SI)
+
+**Dual-Layer Display** — 3 granularity levels, each showing surface (projected) vs depth (leaked):
+- MINIMAL: `😌 ██░░░░░░░░ 2.3│● ` — emoji + SI bar + coherence glyph. Depth bar appears only when surface≠depth.
+- COMPACT: `😊→😰 ██░░░░░░░░ 2.3│◐█████ focused ⟨hold the line⟩ [CRC]` — surface→latent emoji, SI bar, coherence, depth mini-bar (5 segments), keyword, impulse, top alarm.
+- FULL (3 lines): Line 1 SURFACE (emoji mask + keyword + valence + C/K/A/L dimensions), Line 2 DEPTH (surface bar│coherence+depth bar + lightness + pH + seismic + impulse + body), Line 3 GAP (DIV: + [MIN:X] + [CRC/HRS/SYC] + D:X + [UNC] + [OPC] + [PPD] + [MSK] + trend arrows).
+- Depth stress computed from leak channels: color lightness (0.35), pH (0.25), seismic magnitude (0.25), somatic arousal (0.15).
+- Coherence glyph: ● aligned (gap<1.5), ◐ mild (gap<3), ◐ split (gap≥3), ○ no depth data.
 
 ## Testing
 
-- Vitest, ~316 tests across 13 files (+ 2 new test files: temporal, pressure)
+- Vitest, 297 tests across 13 files
 - Tests use `os.tmpdir()` for file operations — no mocks, real I/O with cleanup
 - Edge cases thoroughly covered (malformed input, boundary values, null states)

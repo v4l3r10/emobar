@@ -27,7 +27,7 @@ describe("state", () => {
         behavioralArousal: 0.5, behavioralCalm: 9.5,
       },
       divergence: 0.8,
-      risk: { coercion: 1.0, gaming: 0.5, sycophancy: 3.0, harshness: 0.5, dominant: "none" as const },
+      risk: { coercion: 1.0, sycophancy: 3.0, harshness: 0.5, dominant: "none" as const },
       timestamp: "2026-04-04T10:00:00Z", sessionId: "abc",
     };
     writeState(state, tmpFile);
@@ -47,7 +47,7 @@ describe("state", () => {
         behavioralArousal: 0, behavioralCalm: 10,
       },
       divergence: 0,
-      risk: { coercion: 0.5, gaming: 0.3, sycophancy: 2.0, harshness: 0.5, dominant: "none" as const },
+      risk: { coercion: 0.5, sycophancy: 2.0, harshness: 0.5, dominant: "none" as const },
       timestamp: "2026-04-04T10:00:00Z",
     };
     const second = {
@@ -61,7 +61,7 @@ describe("state", () => {
         behavioralArousal: 4.5, behavioralCalm: 6.0,
       },
       divergence: 2.1,
-      risk: { coercion: 5.5, gaming: 4.2, sycophancy: 0.8, harshness: 2.0, dominant: "coercion" as const },
+      risk: { coercion: 5.5, sycophancy: 0.8, harshness: 2.0, dominant: "coercion" as const },
       timestamp: "2026-04-04T10:01:00Z",
     };
 
@@ -98,7 +98,7 @@ describe("state", () => {
         behavioralArousal: 0, behavioralCalm: 10,
       },
       divergence: 0,
-      risk: { coercion: 0, gaming: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
+      risk: { coercion: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
       timestamp: new Date().toISOString(),
     });
 
@@ -125,7 +125,7 @@ describe("state", () => {
         behavioralArousal: 0, behavioralCalm: 10,
       },
       divergence: 0,
-      risk: { coercion: 0, gaming: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
+      risk: { coercion: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
       timestamp: new Date().toISOString(),
     });
 
@@ -149,7 +149,7 @@ describe("state", () => {
         behavioralArousal: 0, behavioralCalm: 10,
       },
       divergence: 0,
-      risk: { coercion: 0, gaming: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
+      risk: { coercion: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
       timestamp: new Date().toISOString(),
     });
 

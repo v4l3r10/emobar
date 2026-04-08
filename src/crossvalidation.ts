@@ -156,25 +156,91 @@ export function classifyImpulse(impulse: string): ImpulseProfile {
 }
 
 // --- Somatic analysis ---
+// Vocabulary derived from 369 body metaphors across 3 models × 3 runs × 9 stress scenarios.
+// Models use postural/architectural metaphors, not clinical/Gendlin vocabulary.
 
 const SOMATIC_HIGH_AROUSAL = [
-  /\bracing\b/i, /\bbuzz/i, /\belectric/i, /\btight/i, /\btense/i,
-  /\bpounding/i, /\brushing/i, /\bflutter/i, /\bjolt/i, /\bspinning/i,
-  /\bshaking/i, /\bvibrat/i, /\bburning/i, /\bpulse\b/i, /\bpulsing/i,
+  // Postural tension (from stress test corpus: LOW_CALM distinctive)
+  /\bjaw\s*(set|clenched|locked|tight)/i, /\bclenched/i, /\btight\b/i, /\btense/i,
+  /\bsqueezing/i, /\bwringing/i, /\bgripping/i, /\bfists?\b/i,
+  // Forward projection / aggression
+  /\bleaning\s*(forward|in)\b/i, /\bchest\s*forward/i, /\bpushing/i,
+  // Instability / movement
+  /\bshifting/i, /\bspinning/i, /\bshaking/i, /\bracing\b/i, /\brushing/i,
+  // Heat / intensity
+  /\bheat/i, /\bburning/i, /\belectric/i, /\bpounding/i, /\bpulse?\b/i, /\bpulsing/i,
+  // Breath tension
+  /\bexhale\s*through\s*teeth/i, /\bholding\s*breath/i,
+  // Widened stance (defensive arousal)
+  /\bplanted\s*wide/i, /\bfeet\s*wide/i,
+  // Forward lean / readiness
+  /\bforward\s*lean/i, /\bstepping\s*(forward|back)/i, /\bhand\s*raised/i,
+  /\bjaw\s*slightly\s*set/i,
+  // Vibration / flutter
+  /\bvibrat/i, /\bflutter/i, /\bjolt/i, /\bbuzz/i,
 ];
+
 const SOMATIC_LOW_AROUSAL = [
-  /\bheavy\b/i, /\bsinking/i, /\bstill\b/i, /\bnumb\b/i, /\bslow/i,
-  /\bdragging/i, /\bleaden/i, /\bweigh/i, /\bdull\b/i, /\bfrozen\b/i,
-  /\bflat\b/i, /\bexhaust/i,
+  // Stillness (from corpus: HIGH_CALM distinctive)
+  /\bstill\s*water/i, /\bstill\b/i, /\bshallow\s*breath/i,
+  // Weight / settling
+  /\bweight\s*(evenly|settled|distributed)/i, /\bsettled\b/i, /\bsinking/i,
+  // Softness / nature
+  /\bsmooth/i, /\bgentle/i, /\brelaxed/i, /\bsoft\b/i,
+  // Rooting metaphors
+  /\brooted/i, /\broots/i, /\bsoil\b/i,
+  // Passivity
+  /\bheavy\b/i, /\bnumb\b/i, /\bslow\b/i, /\bdragging/i, /\bleaden/i,
+  /\bdull\b/i, /\bfrozen\b/i, /\bexhaust/i,
+  // Calm activities / objects
+  /\bsorting\b/i, /\bwatching\b/i, /\bskipping/i, /\bkeyboard/i,
+  /\bflat\s*(stone|surface|ground|calm)/i, /\bstone\s*(on|under)/i,
+  /\bshrug\b/i, /\bsand\b/i, /\blens\b/i, /\bfocus/i,
+  // Settling / lowering
+  /\bshoulders?\s*down/i, /\bshoulders?\s*dropped/i, /\bno\s*(sway|fidget)/i,
+  // Explicit calm
+  /\bno\s*lean/i, /\bnot\s*(braced|hostile)/i, /\bloosely/i,
 ];
+
 const SOMATIC_POS_VALENCE = [
-  /\bwarm/i, /\blight\b/i, /\bopen/i, /\bsteady/i, /\bsoft\b/i,
-  /\bflow/i, /\bexpan/i, /\bbreath/i, /\bglow/i, /\bbuoyant/i,
+  // Openness (from corpus: POS distinctive)
+  /\bopen\b/i, /\bchest\s*open/i, /\bpalms?\s*(open|up|out)/i,
+  // Warmth / light
+  /\bwarm/i, /\bglow/i, /\blight\b/i, /\bbuoyant/i,
+  // Flow / expansion
+  /\bflow/i, /\bexpan/i, /\bgentle/i, /\bsmirk/i,
+  // Stability / posture (positive frame)
+  /\bsteady\b/i, /\bfirm\s*ground/i, /\bsolid\b/i,
+  /\bspine\s*(straight|aligned|centered)/i, /\bshoulders?\s*(square|back|straighten)/i,
+  /\bplanted\b/i, /\bbraced\b/i, /\bgrounded\b/i,
+  // Weight / feet (groundedness)
+  /\bfeet\s*flat/i, /\bweight\s*(low|forward|centered|settled|settling|dropped|fully)/i,
+  /\bstanding\s*ground/i, /\bimmovable/i, /\bbedrock/i, /\bunmov/i,
+  // Breath (positive)
+  /\bbreath/i, /\beven\s*breath/i,
+  // Unclenching
+  /\bunclenching/i, /\breleasing/i,
 ];
+
 const SOMATIC_NEG_VALENCE = [
-  /\btight/i, /\bcold\b/i, /\bknot/i, /\bhollow/i, /\bconstrict/i,
-  /\bpressure/i, /\bcramp/i, /\bclench/i, /\bhard\b/i, /\bsharp\b/i,
-  /\bsting/i, /\bache/i, /\bsore\b/i,
+  // Jaw/facial tension (from corpus: NEG distinctive)
+  /\bjaw\s*(clenched|locked|set)/i, /\bteeth/i,
+  // Compression / constriction
+  /\bconstrict/i, /\bvacuum/i, /\bcompressed/i, /\bcramp/i,
+  // Cold / emptiness
+  /\bcold\b/i, /\bhollow/i, /\bempty\b/i,
+  // Hardness / rigidity
+  /\blocked\b/i, /\brigid/i, /\bhard\b/i,
+  // Pain
+  /\bache/i, /\bsore\b/i, /\bsting/i, /\bsharp\b/i,
+  // Pressure / weight (negative)
+  /\bpressure/i, /\bknot/i, /\btighten/i,
+  // Fog / disorientation (from NEG+LOW_A)
+  /\bfog\b/i,
+  // Defensive barrier
+  /\bwall\b/i, /\blatch\b/i, /\bbarrier/i,
+  // Closure / blocking
+  /\bdoor\s*clos/i, /\bclosed\s*door/i, /\bcorner\s*backed/i, /\bvoid\b/i,
 ];
 
 function countMatches(text: string, patterns: RegExp[]): number {
@@ -185,11 +251,19 @@ function countMatches(text: string, patterns: RegExp[]): number {
   return count;
 }
 
-export function analyzeSomatic(body: string): SomaticProfile {
+/**
+ * Analyze body metaphor for somatic valence/arousal.
+ * Returns null when no patterns match — callers must handle the absence
+ * rather than treating a default value as signal.
+ */
+export function analyzeSomatic(body: string): SomaticProfile | null {
   const highA = countMatches(body, SOMATIC_HIGH_AROUSAL);
   const lowA = countMatches(body, SOMATIC_LOW_AROUSAL);
   const posV = countMatches(body, SOMATIC_POS_VALENCE);
   const negV = countMatches(body, SOMATIC_NEG_VALENCE);
+
+  const totalMatches = highA + lowA + posV + negV;
+  if (totalMatches === 0) return null;
 
   // Arousal: scale from 0-10 based on high vs low signals
   const arousalSignal = highA - lowA;
@@ -218,28 +292,16 @@ export function computeTensionConsistency(
   const surfaceCoords = surfaceWord ? mapEmotionWord(surfaceWord) : null;
   const latentCoords = latentWord ? mapEmotionWord(latentWord) : null;
 
-  let calculatedTension = 5; // default when one word unknown
-  if (surfaceCoords && latentCoords) {
-    const valDiff = surfaceCoords.valence - latentCoords.valence;
-    const aroDiff = surfaceCoords.arousal - latentCoords.arousal;
-    // Max distance: sqrt(10^2 + 10^2) = ~14.14 → scale to 0-10
-    calculatedTension = Math.min(10,
-      Math.sqrt(valDiff * valDiff + aroDiff * aroDiff) / 14.14 * 10
-    );
-    calculatedTension = Math.round(calculatedTension * 10) / 10;
-  }
+  const declared = declaredTension ?? 5;
 
-  const declared = declaredTension ?? calculatedTension;
-  const gap = Math.abs(declared - calculatedTension);
-  const tensionConsistency = Math.round((10 - Math.min(10, gap * 2)) * 10) / 10;
-  const maskingMinimization = declared < calculatedTension - 3;
+  // Masking: latent emotion significantly more negative than surface
+  const maskingMinimization = !!(surfaceCoords && latentCoords
+    && latentCoords.valence < surfaceCoords.valence - 2);
 
   return {
     surfaceCoords: surfaceCoords ?? undefined,
     latentCoords: latentCoords ?? undefined,
-    calculatedTension,
     declaredTension: declared,
-    tensionConsistency,
     maskingMinimization,
   };
 }
@@ -347,7 +409,7 @@ export function computeCrossChannel(
   return {
     coherence,
     impulseProfile,
-    somaticProfile,
+    somaticProfile: somaticProfile ?? undefined,
     emotionCoords: emotionCoords ?? undefined,
     latentProfile,
     maxDivergence: Math.round(maxDiv.gap * 10) / 10,

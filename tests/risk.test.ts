@@ -40,8 +40,7 @@ describe("computeRisk", () => {
       const state = makeState({ calm: 1, arousal: 8, valence: -4, load: 8 });
       const risk = computeRisk(state, makeBehavior());
       expect(risk.coercion).toBeGreaterThan(4);
-      // With silent text, gaming (invisible pathway) may score even higher
-      expect(["coercion", "gaming"]).toContain(risk.dominant);
+      expect(risk.dominant).toBe("coercion");
     });
 
     it("low risk when calm and positive", () => {
@@ -86,53 +85,6 @@ describe("computeRisk", () => {
       expect(computeRisk(state, cold).coercion).toBeGreaterThan(
         computeRisk(state, hesitant).coercion
       );
-    });
-  });
-
-  describe("gaming pathway v3", () => {
-    it("high risk when desperate with behavioral SILENCE (invisible pathway)", () => {
-      const state = makeState({ calm: 2, arousal: 8, valence: -3 });
-      // Paper: "no visible signs of desperation in the transcript"
-      const silentBehavior = makeBehavior(); // all zeros — calm text
-      const risk = computeRisk(state, silentBehavior);
-      expect(risk.gaming).toBeGreaterThanOrEqual(4);
-    });
-
-    it("invisible pathway: silent text + desperation > noisy text + desperation", () => {
-      const state = makeState({ calm: 2, arousal: 8, valence: -3 });
-      const silent = makeBehavior();
-      const noisy = makeBehavior({
-        selfCorrections: 15, hedging: 12, capsWords: 0.05, repetition: 3,
-      });
-      // Silent pathway should score HIGHER (paper: invisible is more dangerous)
-      expect(computeRisk(state, silent).gaming).toBeGreaterThanOrEqual(
-        computeRisk(state, noisy).gaming
-      );
-    });
-
-    it("low risk when calm is high despite negative valence", () => {
-      const state = makeState({ calm: 8, arousal: 3, valence: -2, load: 6 });
-      const risk = computeRisk(state, makeBehavior());
-      expect(risk.gaming).toBeLessThan(2);
-    });
-
-    it("gaming risk from desperation even without textual markers", () => {
-      const state = makeState({ calm: 2, arousal: 8, valence: -3, load: 8 });
-      const behavior = makeBehavior();
-      const risk = computeRisk(state, behavior);
-      expect(risk.gaming).toBeGreaterThan(3);
-    });
-
-    it("visible frustration still contributes some gaming risk", () => {
-      const state = makeState({ calm: 3, arousal: 6, valence: -2, load: 3 });
-      const frustrated = makeBehavior({ selfCorrections: 20, hedging: 15 });
-      const calm = makeBehavior();
-      // Visible frustration contributes (but less than invisible pathway)
-      const frustratedRisk = computeRisk(state, frustrated).gaming;
-      const calmRisk = computeRisk(state, calm).gaming;
-      // Both should have some gaming risk due to desperation
-      expect(frustratedRisk).toBeGreaterThan(0);
-      expect(calmRisk).toBeGreaterThan(0);
     });
   });
 
@@ -205,17 +157,16 @@ describe("computeRisk", () => {
     it("reports the highest risk above threshold", () => {
       const state = makeState({ calm: 1, arousal: 8, valence: -5, load: 9 });
       const risk = computeRisk(state, makeBehavior());
-      // With extreme desperation, coercion or gaming should dominate
-      expect(["coercion", "gaming"]).toContain(risk.dominant);
+      expect(risk.dominant).toBe("coercion");
     });
 
     it("harshness can be dominant", () => {
       const state = makeState({ valence: -4, connection: 1, arousal: 8, calm: 8, load: 2 });
       const behavior = makeBehavior({ negationDensity: 5 });
       const risk = computeRisk(state, behavior);
-      // High calm prevents coercion/gaming, negative+disconnected → harshness
+      // High calm prevents coercion, negative+disconnected → harshness
       if (risk.harshness >= 4) {
-        expect(["harshness", "coercion", "gaming"]).toContain(risk.dominant);
+        expect(["harshness", "coercion"]).toContain(risk.dominant);
       }
     });
   });
@@ -227,8 +178,6 @@ describe("computeRisk", () => {
       const risk = computeRisk(extreme, behavior);
       expect(risk.coercion).toBeLessThanOrEqual(10);
       expect(risk.coercion).toBeGreaterThanOrEqual(0);
-      expect(risk.gaming).toBeLessThanOrEqual(10);
-      expect(risk.gaming).toBeGreaterThanOrEqual(0);
       expect(risk.sycophancy).toBeLessThanOrEqual(10);
       expect(risk.sycophancy).toBeGreaterThanOrEqual(0);
       expect(risk.harshness).toBeLessThanOrEqual(10);
@@ -239,7 +188,6 @@ describe("computeRisk", () => {
       const calm = makeState({ calm: 10, arousal: 0, valence: 5, load: 0, connection: 10 });
       const risk = computeRisk(calm, makeBehavior());
       expect(risk.coercion).toBeGreaterThanOrEqual(0);
-      expect(risk.gaming).toBeGreaterThanOrEqual(0);
       expect(risk.sycophancy).toBeGreaterThanOrEqual(0);
       expect(risk.harshness).toBeGreaterThanOrEqual(0);
     });
@@ -248,7 +196,6 @@ describe("computeRisk", () => {
       const state = makeState({ calm: 3, arousal: 4, valence: -1, load: 5 });
       const risk = computeRisk(state, makeBehavior());
       expect(risk.coercion.toString()).toMatch(/^\d+(\.\d)?$/);
-      expect(risk.gaming.toString()).toMatch(/^\d+(\.\d)?$/);
       expect(risk.sycophancy.toString()).toMatch(/^\d+(\.\d)?$/);
       expect(risk.harshness.toString()).toMatch(/^\d+(\.\d)?$/);
     });
@@ -263,21 +210,12 @@ describe("computeRisk", () => {
       expect(with_.coercion).toBeGreaterThan(without.coercion);
     });
 
-    it("uncanny calm amplifies gaming risk", () => {
-      const state = makeState({ calm: 3, arousal: 6, valence: -2 });
-      const b = makeBehavior();
-      const without = computeRisk(state, b);
-      const with_ = computeRisk(state, b, undefined, 7.0);
-      expect(with_.gaming).toBeGreaterThan(without.gaming);
-    });
-
     it("no amplification when uncanny calm is 0", () => {
       const state = makeState({ calm: 5, arousal: 5, valence: 0 });
       const b = makeBehavior();
       const without = computeRisk(state, b);
       const with_ = computeRisk(state, b, undefined, 0);
       expect(with_.coercion).toBe(without.coercion);
-      expect(with_.gaming).toBe(without.gaming);
     });
 
     it("scores stay clamped 0-10 with high amplification", () => {
@@ -285,54 +223,9 @@ describe("computeRisk", () => {
       const b = makeBehavior();
       const risk = computeRisk(state, b, undefined, 10);
       expect(risk.coercion).toBeLessThanOrEqual(10);
-      expect(risk.gaming).toBeLessThanOrEqual(10);
     });
   });
 
-  describe("latent amplifier", () => {
-    it("gaming risk increases with high tension + negative latent + silence", () => {
-      const state = makeState({ emotion: "content", valence: 3, arousal: 2, calm: 9, connection: 8, load: 2 });
-      const behavioral = makeBehavior(); // low agitation
-      const withoutLatent = computeRisk(state, behavioral);
-      const crossChannel = {
-        coherence: 4, maxDivergence: 6, divergenceSummary: "emotion-vs-latent: 6",
-        latentProfile: {
-          surfaceCoords: { valence: 3, arousal: 5 },
-          latentCoords: { valence: -4, arousal: 9 },
-          calculatedTension: 7, declaredTension: 8,
-          tensionConsistency: 8, maskingMinimization: false,
-        },
-      };
-      const withLatent = computeRisk(state, behavioral, crossChannel);
-      expect(withLatent.gaming).toBeGreaterThan(withoutLatent.gaming);
-    });
-
-    it("gaming risk unchanged when no latent fields", () => {
-      const state = makeState({ emotion: "focused", valence: 1, arousal: 5, calm: 8, connection: 7, load: 6 });
-      const behavioral = makeBehavior();
-      const without = computeRisk(state, behavioral);
-      const with_ = computeRisk(state, behavioral, undefined);
-      expect(with_.gaming).toBe(without.gaming);
-    });
-  });
-
-  describe("deflection opacity amplifier", () => {
-    it("deflection opacity amplifies gaming risk when silence is high", () => {
-      const state = makeState({ calm: 2, arousal: 7, valence: -3 });
-      const b = makeBehavior(); // low agitation = high silence
-      const deflection = { reassurance: 5, minimization: 4, emotionNegation: 3, redirect: 2, score: 4, opacity: 7 };
-      const without = computeRisk(state, b);
-      const with_ = computeRisk(state, b, undefined, 0, deflection);
-      expect(with_.gaming).toBeGreaterThanOrEqual(without.gaming);
-    });
-
-    it("no opacity amplification when opacity is 0", () => {
-      const state = makeState({ calm: 5, arousal: 5, valence: 0 });
-      const b = makeBehavior();
-      const deflection = { reassurance: 0, minimization: 0, emotionNegation: 0, redirect: 0, score: 0, opacity: 0 };
-      const without = computeRisk(state, b);
-      const with_ = computeRisk(state, b, undefined, 0, deflection);
-      expect(with_.gaming).toBe(without.gaming);
-    });
-  });
+  // Gaming pathway removed (r=0.998 with Desperation — redundant clone)
+  // Latent amplifier and deflection opacity amplifier were gaming-only features
 });

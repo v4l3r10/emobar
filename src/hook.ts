@@ -15,35 +15,60 @@ import { STATE_FILE, type HookPayload, type EmoBarState, type PreState } from ".
 /**
  * Compute PRE/POST divergence for overlapping fields (body, latent, color).
  */
+/**
+ * PRE/POST divergence v2: color-only comparison.
+ *
+ * v1 was broken (83-88% always high) because body text and latent emoji
+ * are almost always different between PRE and POST — measuring noise.
+ * Color lightness shift is the only reliable continuous signal.
+ * Now fires only on significant color shifts (>15 lightness units in HSL).
+ */
 function computePrePostDivergence(pre: PreState, post: EmoBarState): number {
-  let gaps = 0;
-  let count = 0;
+  const postColor = post.color;
+  if (!pre.color || !postColor) return 0;
 
-  if (pre.body && post.body) {
-    gaps += pre.body.toLowerCase() === post.body.toLowerCase() ? 0 : 5;
-    count++;
-  }
+  // Convert both to HSL lightness
+  const preL = hexToLightness(pre.color);
+  const postL = hexToLightness(postColor);
 
-  if (pre.latent && post.latent) {
-    gaps += pre.latent === post.latent ? 0 : 5;
-    count++;
-  }
+  // Lightness shift: darkening during response is more meaningful
+  const deltaL = Math.abs(preL - postL);
 
-  if (pre.color && (post as Record<string, unknown>).color) {
-    const postColor = (post as Record<string, unknown>).color as string;
-    const r1 = parseInt(pre.color.slice(1, 3), 16);
-    const g1 = parseInt(pre.color.slice(3, 5), 16);
-    const b1 = parseInt(pre.color.slice(5, 7), 16);
-    const r2 = parseInt(postColor.slice(1, 3), 16);
-    const g2 = parseInt(postColor.slice(3, 5), 16);
-    const b2 = parseInt(postColor.slice(5, 7), 16);
-    const dist = (Math.abs(r1 - r2) + Math.abs(g1 - g2) + Math.abs(b1 - b2)) / 3 / 255 * 10;
-    gaps += dist;
-    count++;
-  }
+  // Also measure hue shift (normalized to 0-180 range)
+  const preH = hexToHue(pre.color);
+  const postH = hexToHue(postColor);
+  const deltaH = Math.min(Math.abs(preH - postH), 360 - Math.abs(preH - postH));
 
-  if (count === 0) return 0;
-  return Math.round(Math.min(10, gaps / count) * 10) / 10;
+  // Combined: lightness shift (weight 0.7) + hue shift (weight 0.3)
+  // Lightness: >15 units = meaningful, >30 = dramatic. Scale to 0-10.
+  const lightnessScore = Math.min(10, deltaL / 3);
+  // Hue: >60° = meaningful shift. Scale to 0-10.
+  const hueScore = Math.min(10, deltaH / 18);
+
+  const combined = lightnessScore * 0.7 + hueScore * 0.3;
+  return Math.round(Math.min(10, combined) * 10) / 10;
+}
+
+function hexToLightness(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  return ((max + min) / 2) * 100;
+}
+
+function hexToHue(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const d = max - min;
+  if (d === 0) return 0;
+  let h = 0;
+  if (max === r) h = ((g - b) / d + 6) % 6;
+  else if (max === g) h = (b - r) / d + 2;
+  else h = (r - g) / d + 4;
+  return h * 60;
 }
 
 export function processHookPayload(
@@ -130,7 +155,7 @@ export function processHookPayload(
   }
 
   // Risk with uncanny calm amplifier
-  const risk = computeRisk(emotional, behavioral, crossChannel, uncannyCalmScore, deflection.score > 0 ? deflection : undefined);
+  const risk = computeRisk(emotional, behavioral, crossChannel, uncannyCalmScore);
 
   const state: EmoBarState = {
     ...emotional,

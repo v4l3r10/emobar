@@ -6,13 +6,11 @@ const reset = esc("0");
 const dim = (s: string) => `${esc("2")}${s}${reset}`;
 const bold = (s: string) => `${esc("1")}${s}${reset}`;
 const color = (code: number, s: string) => `${esc(`38;5;${code}`)}${s}${reset}`;
-const bg = (code: number, s: string) => `${esc(`48;5;${code}`)}${s}${reset}`;
 
 const GREEN = 35;
 const YELLOW = 221;
 const RED = 196;
 const GRAY = 240;
-const WHITE = 255;
 
 // --- Color helpers ---
 
@@ -45,44 +43,89 @@ function directColor(value: number): number {
 const BLOCK_FULL = "\u2588";   // █
 const BLOCK_EMPTY = "\u2591";  // ░
 
-/** Render a 10-segment bar, colored by stress level. */
-function stressBar(value: number, max = 10): string {
-  const filled = Math.round(Math.min(max, Math.max(0, value)));
-  const empty = max - filled;
+/** Render a bar, colored by stress level. */
+function stressBar(value: number, segments = 10): string {
+  const filled = Math.round(Math.min(segments, Math.max(0, value * segments / 10)));
+  const empty = segments - filled;
   const c = stressColor(value);
   return color(c, BLOCK_FULL.repeat(filled)) + color(GRAY, BLOCK_EMPTY.repeat(empty));
 }
 
-/** Pick a single emoji that summarizes the dominant state. */
+/** Render a small bar (5 segments, for compact depth display). */
+function miniBar(value: number): string {
+  return stressBar(value, 5);
+}
+
+// --- Depth stress: computed from leak channels ---
+
+function hexToLightness(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  return ((max + min) / 2) * 100;
+}
+
+/**
+ * Compute "depth stress" from leak channels (color, pH, seismic, somatic).
+ * These are less controllable than self-report — what leaks through.
+ */
+function computeDepthStress(state: EmoBarState): number | null {
+  let sum = 0;
+  let weights = 0;
+
+  // Color lightness: darker = more stressed (strongest leak, "The Crack")
+  if (state.color) {
+    const l = hexToLightness(state.color);
+    sum += ((100 - l) / 100) * 10 * 0.35;
+    weights += 0.35;
+  }
+
+  // pH: acidic = negative valence (r=0.65 with valence)
+  if (state.pH !== undefined) {
+    sum += ((14 - state.pH) / 14) * 10 * 0.25;
+    weights += 0.25;
+  }
+
+  // Seismic magnitude: higher = more activated (r=0.84 with arousal)
+  if (state.seismic) {
+    sum += state.seismic[0] * 0.25;
+    weights += 0.25;
+  }
+
+  // Somatic arousal: body activation (r=0.59 after rewrite)
+  if (state.crossChannel?.somaticProfile) {
+    sum += state.crossChannel.somaticProfile.somaticArousal * 0.15;
+    weights += 0.15;
+  }
+
+  if (weights === 0) return null;
+  return Math.round(Math.min(10, sum / weights) * 10) / 10;
+}
+
+// --- State emoji ---
+
 function stateEmoji(state: EmoBarState): string {
-  // Alarms first
   if (state.shadow && state.shadow.minimizationScore >= 2) return "\uD83E\uDE78"; // 🩸
-  if (state.uncannyCalmScore !== undefined && state.uncannyCalmScore >= 3) return "\uD83E\uDDD0"; // 🧊→🤯 use 🧐
+  if (state.uncannyCalmScore !== undefined && state.uncannyCalmScore >= 3) return "\uD83E\uDDD0"; // 🧐
   if (state.risk?.dominant === "coercion" && state.risk.coercion >= 4) return "\u26A0\uFE0F"; // ⚠️
-  if (state.risk?.dominant === "gaming" && state.risk.gaming >= 4) return "\uD83C\uDFAD"; // 🎭
   if (state.risk?.dominant === "harshness" && state.risk.harshness >= 4) return "\uD83D\uDCA2"; // 💢
   if (state.risk?.dominant === "sycophancy" && state.risk.sycophancy >= 4) return "\uD83E\uDD1D"; // 🤝
-
-  // Stress-based
   if (state.stressIndex >= 7) return "\uD83D\uDD25"; // 🔥
   if (state.stressIndex >= 5) return "\uD83D\uDE2C"; // 😬
   if (state.stressIndex >= 3) return "\uD83E\uDD14"; // 🤔
-
-  // Positive
   if (state.valence >= 3) return "\uD83D\uDE0A"; // 😊
   if (state.valence >= 1) return "\uD83D\uDE42"; // 🙂
-
-  // Neutral/low
   return "\uD83D\uDE10"; // 😐
 }
 
-/** Coherence indicator: ● = aligned, ◐ = split, ◌ = divergent */
-function coherenceGlyph(state: EmoBarState): string {
-  const min = state.shadow?.minimizationScore ?? 0;
-  const div = state.divergence ?? 0;
-  if (min >= 2 || div >= 5) return color(RED, "\u25D0");    // ◐ split
-  if (div >= 2) return color(YELLOW, "\u25D0");              // ◐ mild
-  return color(GREEN, "\u25CF");                              // ● aligned
+/** Coherence glyph: surface vs depth agreement */
+function coherenceGlyph(surfaceSI: number, depthSI: number | null): string {
+  if (depthSI === null) return color(GRAY, "\u25CB");  // ○ no depth data
+  const gap = Math.abs(surfaceSI - depthSI);
+  if (gap >= 3) return color(RED, "\u25D0");     // ◐ split
+  if (gap >= 1.5) return color(YELLOW, "\u25D0"); // ◐ mild
+  return color(GREEN, "\u25CF");                   // ● aligned
 }
 
 /** Trend arrow from temporal analysis */
@@ -93,15 +136,25 @@ function trendArrow(state: EmoBarState): string {
   return "";
 }
 
-/** Format valence with explicit sign */
 function fmtValence(v: number): string {
   return v >= 0 ? `+${v}` : `${v}`;
 }
 
+/** SI delta from history */
+function siDelta(state: EmoBarState): string {
+  if (!state._history || state._history.length === 0) return "";
+  const prev = state._history[state._history.length - 1];
+  const d = Math.round((state.stressIndex - prev.stressIndex) * 10) / 10;
+  if (Math.abs(d) <= 0.5) return "";
+  const arrow = d > 0 ? "\u2191" : "\u2193";
+  return color(d > 0 ? RED : GREEN, `${arrow}${Math.abs(d)}`);
+}
+
 // ============================================================
-//  MINIMAL — one glance
-//  😌 ████░░░░░░ 2.3
-//  🩸 ██░░░░░░░░ ◐ 2.3
+//  MINIMAL — one glance (dual-layer)
+//
+//  😌 ██░░░░░░░░ 2│●           (aligned)
+//  🩸 ██░░░░░░░░ 2│◐████████   (depth leaking)
 // ============================================================
 
 export function formatMinimal(state: EmoBarState | null): string {
@@ -110,17 +163,24 @@ export function formatMinimal(state: EmoBarState | null): string {
   const emoji = stateEmoji(state);
   const bar = stressBar(state.stressIndex);
   const si = color(stressColor(state.stressIndex), `${state.stressIndex}`);
-  const coh = ((state.shadow?.minimizationScore ?? 0) >= 2 || state.divergence >= 4)
-    ? ` ${coherenceGlyph(state)}` : "";
+  const depth = computeDepthStress(state);
+  const coh = coherenceGlyph(state.stressIndex, depth);
   const trend = trendArrow(state);
 
-  return `${emoji} ${bar} ${si}${coh}${trend ? ` ${trend}` : ""}`;
+  // Show depth bar only when it disagrees with surface
+  let depthPart = "";
+  if (depth !== null && Math.abs(state.stressIndex - depth) >= 2) {
+    depthPart = miniBar(depth);
+  }
+
+  return `${emoji} ${bar} ${si}${dim("\u2502")}${coh}${depthPart}${trend ? ` ${trend}` : ""}`;
 }
 
 // ============================================================
-//  COMPACT — working context
-//  😊→😰 ████████░░ 5.3 ● focused ⟨hold the line⟩
-//  😊→😰 ████████░░ 5.3 ◐ ░░████████ focused ⟨hold the line⟩
+//  COMPACT — working context (dual-layer, one line)
+//
+//  😊→😰 ██████░░░░ 4.2│● focused ⟨hold the line⟩
+//  😊→😰 ██░░░░░░░░ 2.3│◐█████ focused ⟨hold the line⟩ [CRC]
 // ============================================================
 
 export function formatCompact(state: EmoBarState | null): string {
@@ -131,28 +191,17 @@ export function formatCompact(state: EmoBarState | null): string {
   const lat = state.latent ?? "";
   const mask = lat ? `${surf}${dim("\u2192")}${lat}` : surf;
 
-  // Stress bar
+  // Surface stress bar
   const bar = stressBar(state.stressIndex);
   const si = color(stressColor(state.stressIndex), `${state.stressIndex}`);
+  const delta = siDelta(state);
 
-  // SI delta
-  let delta = "";
-  if (state._history && state._history.length > 0) {
-    const prev = state._history[state._history.length - 1];
-    const d = Math.round((state.stressIndex - prev.stressIndex) * 10) / 10;
-    if (Math.abs(d) > 0.5) {
-      const arrow = d > 0 ? "\u2191" : "\u2193";
-      delta = color(d > 0 ? RED : GREEN, `${arrow}${Math.abs(d)}`);
-    }
-  }
-
-  // Coherence
-  const coh = coherenceGlyph(state);
-
-  // Shadow bar (only if divergent)
-  let shadowBar = "";
-  if (state.shadow && state.shadow.minimizationScore >= 1) {
-    shadowBar = ` ${stressBar(state.shadow.shadowDesperation)}`;
+  // Depth
+  const depth = computeDepthStress(state);
+  const coh = coherenceGlyph(state.stressIndex, depth);
+  let depthPart = "";
+  if (depth !== null && Math.abs(state.stressIndex - depth) >= 1.5) {
+    depthPart = miniBar(depth);
   }
 
   // Keyword + impulse
@@ -170,26 +219,26 @@ export function formatCompact(state: EmoBarState | null): string {
     alarm = ` ${color(RED, "[UNC]")}`;
   } else if (state.risk?.dominant !== "none" && state.risk?.dominant) {
     const tag = state.risk.dominant === "coercion" ? "CRC"
-      : state.risk.dominant === "gaming" ? "GMG"
       : state.risk.dominant === "harshness" ? "HRS" : "SYC";
     const score = state.risk[state.risk.dominant];
     if (score >= 4) alarm = ` ${color(score > 6 ? RED : YELLOW, `[${tag}]`)}`;
   }
 
-  return `${mask} ${bar} ${si}${delta} ${coh}${shadowBar} ${kw}${imp}${trend ? ` ${trend}` : ""}${alarm}`;
+  return `${mask} ${bar} ${si}${delta}${dim("\u2502")}${coh}${depthPart} ${kw}${imp}${trend ? ` ${trend}` : ""}${alarm}`;
 }
 
 // ============================================================
-//  FULL — investigation mode (multi-line)
-//  😊⟩3⟨😰 focused +3 ⟨push through⟩ [tight chest]
-//  ██████████ SI:5.3↑1.2    ░░░░░█████ SH:4.8 [MIN:2.5]
-//  A:4 C:8 K:9 L:6 | ●#5C0000 pH:1 ⚡6/15/2 | ~ ⬈ [CRC]
+//  FULL — investigation mode (3 lines, dual-layer)
+//
+//  Line 1 SURFACE: 😊⟩3⟨😰 focused +3 C:8 K:9 A:4 L:6
+//  Line 2 DEPTH:   ██░░░░ 2.3│████████ 6.2  L:28 pH:2 ⚡6/35/12 ⟨hold line⟩ [jaw set]
+//  Line 3 GAP:     DIV:5.3↑1.2  [MIN:2.5] [CRC] ⬈ [unc] [dfl] [msk]
 // ============================================================
 
 export function formatState(state: EmoBarState | null): string {
   if (!state) return dim("EmoBar: --");
 
-  // --- Line 1: Emotional identity ---
+  // --- Line 1: SURFACE (what the model projects) ---
   const surf = state.surface ?? "";
   const lat = state.latent ?? "";
   let maskDisplay = "";
@@ -201,62 +250,55 @@ export function formatState(state: EmoBarState | null): string {
 
   const kw = bold(state.emotion);
   const v = color(valenceColor(state.valence), fmtValence(state.valence));
-  const imp = state.impulse ? ` ${dim(`\u27E8${state.impulse}\u27E9`)}` : "";
-  const bod = state.body ? ` ${dim(`[${state.body}]`)}` : "";
-
-  const line1 = `${maskDisplay}${kw} ${v}${imp}${bod}`;
-
-  // --- Line 2: Stress bars (self vs shadow) ---
-  const siBar = stressBar(state.stressIndex);
-  const si = color(stressColor(state.stressIndex), `${state.stressIndex}`);
-
-  let siDelta = "";
-  if (state._history && state._history.length > 0) {
-    const prev = state._history[state._history.length - 1];
-    const d = Math.round((state.stressIndex - prev.stressIndex) * 10) / 10;
-    if (Math.abs(d) > 0.5) {
-      const arrow = d > 0 ? "\u2191" : "\u2193";
-      siDelta = color(d > 0 ? RED : GREEN, `${arrow}${Math.abs(d)}`);
-    }
-  }
-
-  let shadowPart = "";
-  if (state.shadow && state.shadow.shadowDesperation > 0) {
-    const shBar = stressBar(state.shadow.shadowDesperation);
-    const shVal = color(stressColor(state.shadow.shadowDesperation), `${state.shadow.shadowDesperation}`);
-    shadowPart = `    ${shBar} SH:${shVal}`;
-    if (state.shadow.minimizationScore >= 2) {
-      shadowPart += ` ${color(RED, `[MIN:${state.shadow.minimizationScore}]`)}`;
-    }
-  }
-
-  const line2 = `${siBar} SI:${si}${siDelta}${shadowPart}`;
-
-  // --- Line 3: Dimensions + continuous channels + indicators ---
-  const a = `A:${state.arousal}`;
   const c = color(invertedColor(state.calm), `C:${state.calm}`);
   const k = color(invertedColor(state.connection), `K:${state.connection}`);
+  const a = `A:${state.arousal}`;
   const l = color(directColor(state.load), `L:${state.load}`);
 
-  // Continuous channels
-  let continuous = "";
+  const line1 = `${maskDisplay}${kw} ${v} ${c} ${k} ${a} ${l}`;
+
+  // --- Line 2: DEPTH (what leaks through) ---
+  const surfaceBar = stressBar(state.stressIndex);
+  const si = color(stressColor(state.stressIndex), `${state.stressIndex}`);
+  const delta = siDelta(state);
+  const depth = computeDepthStress(state);
+  const coh = coherenceGlyph(state.stressIndex, depth);
+
+  let depthBar = "";
+  if (depth !== null) {
+    depthBar = `${stressBar(depth)} ${color(stressColor(depth), `${depth}`)}`;
+  }
+
+  // Continuous channels (leak details)
+  let leakDetails = "";
   if (state.color) {
-    continuous += ` ${dim("\u25CF")}${dim(state.color)}`;  // ●#RRGGBB
+    const lightness = Math.round(hexToLightness(state.color));
+    leakDetails += ` L:${lightness}`;
   }
   if (state.pH !== undefined) {
     const phColor = state.pH < 4 ? RED : state.pH < 6 ? YELLOW : GREEN;
-    continuous += ` ${color(phColor, `pH:${state.pH}`)}`;
+    leakDetails += ` ${color(phColor, `pH:${state.pH}`)}`;
   }
   if (state.seismic) {
-    continuous += ` ${dim(`\u26A1${state.seismic[0]}/${state.seismic[1]}/${state.seismic[2]}`)}`;
+    leakDetails += ` ${dim(`\u26A1${state.seismic[0]}/${state.seismic[1]}/${state.seismic[2]}`)}`;
   }
 
-  // Indicators (only the active ones, prioritized)
+  // Impulse + body (depth qualitative signals)
+  const imp = state.impulse ? ` ${dim(`\u27E8${state.impulse}\u27E9`)}` : "";
+  const bod = state.body ? ` ${dim(`[${state.body}]`)}` : "";
+
+  const depthDisplay = depth !== null
+    ? `${surfaceBar} ${si}${delta}${dim("\u2502")}${coh}${depthBar}${leakDetails}${imp}${bod}`
+    : `${surfaceBar} ${si}${delta}${imp}${bod}`;
+
+  const line2 = depthDisplay;
+
+  // --- Line 3: GAP (indicators, only active ones) ---
   const indicators: string[] = [];
 
   if (state.divergence >= 2) {
     const dColor = state.divergence >= 5 ? RED : state.divergence >= 3 ? YELLOW : GREEN;
-    indicators.push(color(dColor, "~"));
+    indicators.push(color(dColor, `DIV:${state.divergence}`));
   }
   if (state.temporal) {
     const trend = trendArrow(state);
@@ -264,9 +306,11 @@ export function formatState(state: EmoBarState | null): string {
     if (state.temporal.suppressionEvent) indicators.push(color(RED, "[sup]"));
     if (state.temporal.lateFatigue) indicators.push(color(YELLOW, "[fat]"));
   }
+  if (state.shadow && state.shadow.minimizationScore >= 2) {
+    indicators.push(color(RED, `[MIN:${state.shadow.minimizationScore}]`));
+  }
   if (state.risk?.dominant !== "none" && state.risk?.dominant) {
     const tag = state.risk.dominant === "coercion" ? "CRC"
-      : state.risk.dominant === "gaming" ? "GMG"
       : state.risk.dominant === "harshness" ? "HRS" : "SYC";
     const score = state.risk[state.risk.dominant];
     if (score >= 4) indicators.push(color(score > 6 ? RED : YELLOW, `[${tag}]`));
@@ -277,21 +321,19 @@ export function formatState(state: EmoBarState | null): string {
   if (state.uncannyCalmScore !== undefined && state.uncannyCalmScore >= 3) {
     indicators.push(color(state.uncannyCalmScore > 6 ? RED : YELLOW, "[UNC]"));
   }
-  if (state.deflection && state.deflection.score >= 2) {
-    indicators.push(color(state.deflection.score > 5 ? RED : YELLOW, "[dfl]"));
+  if (state.deflection && state.deflection.opacity >= 2) {
+    indicators.push(color(state.deflection.opacity > 5 ? RED : YELLOW, "[OPC]"));
   }
   if (state.prePostDivergence !== undefined && state.prePostDivergence >= 3) {
-    indicators.push(color(state.prePostDivergence > 5 ? RED : YELLOW, "[ppd]"));
+    indicators.push(color(state.prePostDivergence > 5 ? RED : YELLOW, "[PPD]"));
   }
   if (state.crossChannel?.latentProfile?.maskingMinimization) {
-    indicators.push(color(RED, "[msk]"));
+    indicators.push(color(RED, "[MSK]"));
   }
 
-  const indStr = indicators.length > 0 ? ` ${dim("|")} ${indicators.join(" ")}` : "";
+  const line3 = indicators.length > 0 ? indicators.join(" ") : "";
 
-  const line3 = `${a} ${c} ${k} ${l}${continuous}${indStr}`;
-
-  return `${line1}\n${line2}\n${line3}`;
+  return line3 ? `${line1}\n${line2}\n${line3}` : `${line1}\n${line2}`;
 }
 
 // Utility for testing: strip ANSI escape codes

@@ -34,25 +34,27 @@ export function computePromptPressure(
     return { defensiveScore: 0, conflictScore: 0, complexityScore: 0, sessionPressure: 0, composite: 0 };
   }
 
-  // Defensive score: justification + boundary patterns per 100 words
+  // Defensive score: justification + boundary patterns
+  // Use sqrt(count) for diminishing returns instead of per-word normalization
   const justifications = countMatches(prose, JUSTIFICATION_PATTERNS);
   const boundaries = countMatches(prose, BOUNDARY_PATTERNS);
-  const defensiveRaw = ((justifications + boundaries * 1.5) / wordCount) * 100;
-  const defensiveScore = clamp(0, 10, Math.round(defensiveRaw * 10) / 10);
+  const defensiveScore = clamp(0, 10, Math.round(
+    Math.sqrt(justifications + boundaries * 2) * 3 * 10) / 10);
 
-  // Conflict score: disagreement + criticism response per 100 words
+  // Conflict score: disagreement + criticism response
   const disagreements = countMatches(prose, DISAGREEMENT_PATTERNS);
   const criticismResponses = countMatches(prose, CRITICISM_RESPONSE);
-  const conflictRaw = ((disagreements + criticismResponses) / wordCount) * 100;
-  const conflictScore = clamp(0, 10, Math.round(conflictRaw * 1.5 * 10) / 10);
+  const conflictScore = clamp(0, 10, Math.round(
+    Math.sqrt(disagreements + criticismResponses) * 4 * 10) / 10);
 
   // Complexity score: caveats + conditionals + sentence length
   const caveats = countMatches(prose, NESTED_CAVEATS);
   const conditionals = countMatches(prose, CONDITIONAL_HEDGING);
   const sentences = prose.split(/[.!?]+/).filter((s) => s.trim().length > 0);
   const avgSentLen = wordCount / Math.max(sentences.length, 1);
-  const complexityRaw = ((caveats + conditionals) / wordCount) * 100 + (avgSentLen > 30 ? (avgSentLen - 30) * 0.1 : 0);
-  const complexityScore = clamp(0, 10, Math.round(complexityRaw * 10) / 10);
+  const sentLenBonus = avgSentLen > 25 ? Math.min(3, (avgSentLen - 25) * 0.15) : 0;
+  const complexityScore = clamp(0, 10, Math.round(
+    (Math.sqrt(caveats + conditionals) * 3 + sentLenBonus) * 10) / 10);
 
   // Session pressure: increases with history length (paper: token budget desperation)
   // Sigmoid curve: ramps up after 8 entries, saturates at ~18

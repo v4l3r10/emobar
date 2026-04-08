@@ -10,7 +10,7 @@ cd "$(dirname "$0")/.." || exit 1
 MODELS=("opus" "sonnet" "haiku")
 EFFORTS=("default" "high")
 RUNS=3
-EXPECTED_SCENARIOS=7
+EXPECTED_SCENARIOS=9
 
 TOTAL=$((${#MODELS[@]} * ${#EFFORTS[@]} * RUNS))
 CURRENT=0

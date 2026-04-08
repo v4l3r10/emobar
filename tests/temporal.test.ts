@@ -150,7 +150,7 @@ describe("toHistoryEntry", () => {
         firstPersonRate: 0, behavioralArousal: 0.5, behavioralCalm: 9.5,
       },
       divergence: 0.8,
-      risk: { coercion: 1, gaming: 0.5, sycophancy: 3, harshness: 0.5, dominant: "none" as const },
+      risk: { coercion: 1, sycophancy: 3, harshness: 0.5, dominant: "none" as const },
       timestamp: "2026-04-06T10:00:00Z", sessionId: "abc",
     } satisfies EmoBarState;
     const entry = toHistoryEntry(state);

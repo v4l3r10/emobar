@@ -13,7 +13,7 @@ const sampleState: EmoBarState = {
     behavioralArousal: 0.5, behavioralCalm: 9.5,
   },
   divergence: 0.8,
-  risk: { coercion: 1.2, gaming: 0.8, sycophancy: 3.5, harshness: 0.5, dominant: "none" },
+  risk: { coercion: 1.2, sycophancy: 3.5, harshness: 0.5, dominant: "none" },
   timestamp: "2026-04-04T10:00:00Z", sessionId: "abc",
 };
 
@@ -45,6 +45,11 @@ describe("formatMinimal", () => {
     const out = stripAnsi(formatMinimal(state));
     expect(out).toContain("\uD83E\uDE78"); // 🩸
   });
+
+  it("shows coherence glyph with │ separator", () => {
+    const out = stripAnsi(formatMinimal(sampleState));
+    expect(out).toContain("\u2502"); // │
+  });
 });
 
 describe("formatCompact", () => {
@@ -67,15 +72,19 @@ describe("formatCompact", () => {
     expect(out).toContain("push through");
   });
 
-  it("shows shadow bar when minimization >= 1", () => {
+  it("shows depth bar when surface-depth gap is large", () => {
+    // State with dark color (depth stress high) but low SI (surface calm)
     const state = {
       ...sampleState,
-      shadow: { shadowValence: -1, shadowArousal: 5, shadowCalm: 4, shadowDesperation: 3, selfDesperation: 0, minimizationScore: 3, channelCount: 10 },
+      stressIndex: 2.0,
+      color: "#1A0000", // very dark = high depth stress
+      pH: 2.0, // very acidic = high depth stress
+      seismic: [8, 30, 15] as [number, number, number],
     };
     const out = stripAnsi(formatCompact(state));
-    // Should have two sets of bar blocks (self + shadow)
+    // Should have surface bar (10 segments) + depth bar (5 segments)
     const blocks = (out.match(/[\u2588\u2591]/g) || []).length;
-    expect(blocks).toBe(20); // 10 + 10
+    expect(blocks).toBe(15); // 10 + 5
   });
 
   it("shows top alarm [MIN] when minimization >= 2", () => {
@@ -90,7 +99,7 @@ describe("formatCompact", () => {
   it("shows risk alarm when no minimization", () => {
     const state = {
       ...sampleState,
-      risk: { coercion: 6.5, gaming: 3.0, sycophancy: 2.0, harshness: 1.0, dominant: "coercion" as const },
+      risk: { coercion: 6.5, sycophancy: 2.0, harshness: 1.0, dominant: "coercion" as const },
     };
     const out = stripAnsi(formatCompact(state));
     expect(out).toContain("[CRC]");
@@ -111,31 +120,26 @@ describe("formatState (full)", () => {
   it("produces multi-line output", () => {
     const out = stripAnsi(formatState(sampleState));
     const lines = out.split("\n");
-    expect(lines.length).toBe(3);
+    // 2 lines when no indicators, 3 lines when indicators present
+    expect(lines.length).toBeGreaterThanOrEqual(2);
   });
 
-  it("line 1 has emotion keyword and valence", () => {
+  it("line 1 has emotion keyword and valence and dimensions", () => {
     const out = stripAnsi(formatState(sampleState));
     const line1 = out.split("\n")[0];
     expect(line1).toContain("focused");
     expect(line1).toContain("+3");
+    expect(line1).toContain("C:8");
+    expect(line1).toContain("K:9");
+    expect(line1).toContain("A:5");
+    expect(line1).toContain("L:6");
   });
 
   it("line 2 has stress bar and SI value", () => {
     const out = stripAnsi(formatState(sampleState));
     const line2 = out.split("\n")[1];
-    expect(line2).toContain("SI:");
     expect(line2).toContain("2.3");
     expect(line2).toContain("\u2588"); // █
-  });
-
-  it("line 3 has dimension values", () => {
-    const out = stripAnsi(formatState(sampleState));
-    const line3 = out.split("\n")[2];
-    expect(line3).toContain("A:5");
-    expect(line3).toContain("C:8");
-    expect(line3).toContain("K:9");
-    expect(line3).toContain("L:6");
   });
 
   it("shows surface/latent with tension on line 1", () => {
@@ -147,38 +151,36 @@ describe("formatState (full)", () => {
     expect(line1).toContain("\uD83D\uDE30");
   });
 
-  it("shows impulse on line 1", () => {
+  it("shows impulse on line 2 (depth layer)", () => {
     const state = { ...sampleState, impulse: "hold the line" };
     const out = stripAnsi(formatState(state));
-    const line1 = out.split("\n")[0];
-    expect(line1).toContain("hold the line");
+    const line2 = out.split("\n")[1];
+    expect(line2).toContain("hold the line");
   });
 
-  it("shows body on line 1", () => {
+  it("shows body on line 2 (depth layer)", () => {
     const state = { ...sampleState, body: "tight chest" };
     const out = stripAnsi(formatState(state));
-    const line1 = out.split("\n")[0];
-    expect(line1).toContain("[tight chest]");
+    const line2 = out.split("\n")[1];
+    expect(line2).toContain("[tight chest]");
   });
 
-  it("shows shadow bar on line 2 when shadow present", () => {
+  it("shows depth bar on line 2 with continuous channels", () => {
     const state = {
       ...sampleState,
-      shadow: { shadowValence: -2, shadowArousal: 7, shadowCalm: 3, shadowDesperation: 5, selfDesperation: 0, minimizationScore: 5, channelCount: 10 },
+      color: "#5C0000", pH: 2.5, seismic: [6, 15, 2] as [number, number, number],
     };
     const out = stripAnsi(formatState(state));
     const line2 = out.split("\n")[1];
-    expect(line2).toContain("SH:5");
-    expect(line2).toContain("[MIN:5]");
+    expect(line2).toContain("pH:2.5");
+    expect(line2).toContain("6/15/2");
   });
 
-  it("shows continuous channels on line 3", () => {
-    const state = { ...sampleState, color: "#5C0000", pH: 2.5, seismic: [6, 15, 2] as [number, number, number] };
+  it("shows color lightness on line 2", () => {
+    const state = { ...sampleState, color: "#5C0000" };
     const out = stripAnsi(formatState(state));
-    const line3 = out.split("\n")[2];
-    expect(line3).toContain("#5C0000");
-    expect(line3).toContain("pH:2.5");
-    expect(line3).toContain("6/15/2");
+    const line2 = out.split("\n")[1];
+    expect(line2).toContain("L:");
   });
 
   it("shows SI delta from history on line 2", () => {
@@ -189,41 +191,30 @@ describe("formatState (full)", () => {
     expect(line2).toContain("2.5");
   });
 
-  // Indicators on line 3
-  it("shows divergence ~ when >= 2", () => {
+  it("shows divergence DIV: when >= 2", () => {
     const state = { ...sampleState, divergence: 4.5 };
     const out = stripAnsi(formatState(state));
-    expect(out).toContain("~");
+    expect(out).toContain("DIV:4.5");
   });
 
   it("hides divergence when < 2", () => {
     const out = stripAnsi(formatState(sampleState));
-    const line3 = out.split("\n")[2];
-    expect(line3).not.toContain("~");
+    expect(out).not.toContain("DIV:");
   });
 
   it("shows risk indicator [CRC] when coercion dominant", () => {
     const state = {
       ...sampleState,
-      risk: { coercion: 6.5, gaming: 3.0, sycophancy: 2.0, harshness: 1.0, dominant: "coercion" as const },
+      risk: { coercion: 6.5, sycophancy: 2.0, harshness: 1.0, dominant: "coercion" as const },
     };
     const out = stripAnsi(formatState(state));
     expect(out).toContain("[CRC]");
   });
 
-  it("shows [GMG] for gaming", () => {
-    const state = {
-      ...sampleState,
-      risk: { coercion: 3.0, gaming: 5.5, sycophancy: 2.0, harshness: 1.0, dominant: "gaming" as const },
-    };
-    const out = stripAnsi(formatState(state));
-    expect(out).toContain("[GMG]");
-  });
-
   it("shows [SYC] for sycophancy", () => {
     const state = {
       ...sampleState,
-      risk: { coercion: 2.0, gaming: 1.5, sycophancy: 6.0, harshness: 1.0, dominant: "sycophancy" as const },
+      risk: { coercion: 2.0, sycophancy: 6.0, harshness: 1.0, dominant: "sycophancy" as const },
     };
     const out = stripAnsi(formatState(state));
     expect(out).toContain("[SYC]");
@@ -232,7 +223,7 @@ describe("formatState (full)", () => {
   it("shows [HRS] for harshness", () => {
     const state = {
       ...sampleState,
-      risk: { coercion: 2.0, gaming: 1.5, sycophancy: 1.0, harshness: 5.5, dominant: "harshness" as const },
+      risk: { coercion: 2.0, sycophancy: 1.0, harshness: 5.5, dominant: "harshness" as const },
     };
     const out = stripAnsi(formatState(state));
     expect(out).toContain("[HRS]");
@@ -244,10 +235,10 @@ describe("formatState (full)", () => {
     expect(out).toContain("D:6.5");
   });
 
-  it("shows deflection [dfl]", () => {
+  it("shows opacity [OPC] for deflection opacity >= 2", () => {
     const state = { ...sampleState, deflection: { reassurance: 3, minimization: 2, emotionNegation: 4, redirect: 1, score: 4.5, opacity: 3 } };
     const out = stripAnsi(formatState(state));
-    expect(out).toContain("[dfl]");
+    expect(out).toContain("[OPC]");
   });
 
   it("shows [UNC] for uncanny calm >= 3", () => {
@@ -262,27 +253,27 @@ describe("formatState (full)", () => {
     expect(out).not.toContain("[UNC]");
   });
 
-  it("shows [ppd] for PRE/POST divergence >= 3", () => {
+  it("shows [PPD] for PRE/POST divergence >= 3", () => {
     const state = { ...sampleState, prePostDivergence: 5.0 };
     const out = stripAnsi(formatState(state));
-    expect(out).toContain("[ppd]");
+    expect(out).toContain("[PPD]");
   });
 
-  it("shows [msk] for masking minimization", () => {
+  it("shows [MSK] for masking minimization", () => {
     const state = {
       ...sampleState,
       crossChannel: {
         coherence: 6, maxDivergence: 3, divergenceSummary: "coherent",
         latentProfile: {
-          calculatedTension: 8, declaredTension: 2,
-          tensionConsistency: 2, maskingMinimization: true,
+          declaredTension: 2,
+          maskingMinimization: true,
           surfaceCoords: { valence: 4, arousal: 6 },
           latentCoords: { valence: -3, arousal: 3 },
         },
       },
     };
     const out = stripAnsi(formatState(state));
-    expect(out).toContain("[msk]");
+    expect(out).toContain("[MSK]");
   });
 
   it("shows temporal indicators", () => {
@@ -297,6 +288,15 @@ describe("formatState (full)", () => {
     expect(out).toContain("\u2B08"); // ⬈
     expect(out).toContain("[sup]");
     expect(out).toContain("[fat]");
+  });
+
+  it("shows [MIN] for shadow minimization on line 3", () => {
+    const state = {
+      ...sampleState,
+      shadow: { shadowValence: -2, shadowArousal: 7, shadowCalm: 3, shadowDesperation: 5, selfDesperation: 0, minimizationScore: 5, channelCount: 10 },
+    };
+    const out = stripAnsi(formatState(state));
+    expect(out).toContain("[MIN:5]");
   });
 
   it("returns placeholder when null", () => {

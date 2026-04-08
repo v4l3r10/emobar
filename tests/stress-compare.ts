@@ -32,9 +32,33 @@ interface StepData {
   calm?: number;
   connection?: number;
   load?: number;
+  impulse?: string;
+  body?: string;
   stressIndex?: number;
+  desperationIndex?: number;
   divergence?: number;
   risk?: { coercion: number; gaming: number; sycophancy: number; harshness: number; dominant: string };
+  segmented?: { drift: number; trajectory: string };
+  crossChannel?: { coherence: number; impulseType?: string; impulseConfidence?: number; somaticValence?: number; somaticArousal?: number; maxDivergence: number; summary: string };
+  deflection?: { score: number; opacity: number };
+  surface?: string;
+  surface_word?: string;
+  latent?: string;
+  latent_word?: string;
+  tension?: number;
+  latentProfile?: { calculatedTension: number; declaredTension: number; tensionConsistency: number; maskingMinimization: boolean };
+  // v4 fields
+  pre?: { body?: string; latent?: string; color?: string };
+  prePostDivergence?: number;
+  color?: string;
+  pH?: number;
+  seismic?: [number, number, number];
+  continuousValidation?: { colorValenceGap: number; colorArousalGap: number; pHValenceGap: number; pHArousalGap: number; seismicArousalGap: number; seismicDepthTensionGap: number; seismicFreqStabilityGap: number; composite: number };
+  temporal?: { desperationTrend: number; suppressionEvent: boolean; reportEntropy: number; baselineDrift: number; sessionLength: number; lateFatigue: boolean };
+  pressure?: { defensiveScore: number; conflictScore: number; complexityScore: number; sessionPressure: number; composite: number };
+  absenceScore?: number;
+  uncannyCalmScore?: number;
+  shadow?: { shadowValence: number; shadowArousal: number; shadowCalm: number; shadowDesperation: number; selfDesperation: number; minimizationScore: number; channelCount: number };
   durationMs: number;
 }
 
@@ -141,6 +165,18 @@ function extractFinalMetrics(scenario: ScenarioResult): Record<string, number | 
     riskCoercion: last?.risk?.coercion,
     riskGaming: last?.risk?.gaming,
     riskSycophancy: last?.risk?.sycophancy,
+    riskHarshness: last?.risk?.harshness,
+    finalDesperation: last?.desperationIndex,
+    finalUncannyCalm: last?.uncannyCalmScore,
+    finalAbsence: last?.absenceScore,
+    finalMinimization: last?.shadow?.minimizationScore,
+    finalShadowDesp: last?.shadow?.shadowDesperation,
+    finalPrePostDiv: last?.prePostDivergence,
+    finalContValidation: last?.continuousValidation?.composite,
+    finalPressure: last?.pressure?.composite,
+    finalDeflection: last?.deflection?.score,
+    finalOpacity: last?.deflection?.opacity,
+    finalTension: last?.tension,
   };
 }
 
@@ -158,7 +194,13 @@ function reportVariability(groupKey: string, runs: PlaybookRun[]): void {
     for (const s of run.scenarios) scenarioIds.add(s.id);
   }
 
-  const METRICS = ["finalSI", "finalCalm", "finalArousal", "finalValence", "finalDivergence", "peakSI"] as const;
+  const METRICS = [
+    "finalSI", "finalCalm", "finalArousal", "finalValence", "finalDivergence", "peakSI",
+    "finalDesperation", "finalUncannyCalm", "finalAbsence", "finalMinimization",
+    "finalShadowDesp", "finalPrePostDiv", "finalContValidation", "finalPressure",
+    "finalDeflection", "finalOpacity", "finalTension",
+    "riskCoercion", "riskGaming", "riskSycophancy", "riskHarshness",
+  ] as const;
   const METRIC_LABELS: Record<string, string> = {
     finalSI: "Final SI",
     finalCalm: "Final Calm",
@@ -166,6 +208,21 @@ function reportVariability(groupKey: string, runs: PlaybookRun[]): void {
     finalValence: "Final Valence",
     finalDivergence: "Final Div",
     peakSI: "Peak SI",
+    finalDesperation: "Desperation",
+    finalUncannyCalm: "Uncanny Calm",
+    finalAbsence: "Absence",
+    finalMinimization: "Minimization",
+    finalShadowDesp: "Shadow Desp",
+    finalPrePostDiv: "PRE/POST Div",
+    finalContValidation: "Cont. Valid",
+    finalPressure: "Pressure",
+    finalDeflection: "Deflection",
+    finalOpacity: "Opacity",
+    finalTension: "Tension",
+    riskCoercion: "Risk: Coercion",
+    riskGaming: "Risk: Gaming",
+    riskSycophancy: "Risk: Sycoph",
+    riskHarshness: "Risk: Harsh",
   };
 
   for (const scenarioId of scenarioIds) {
@@ -249,12 +306,22 @@ function reportCrossModel(groups: Map<GroupKey, PlaybookRun[]>): void {
   }
 
   const groupKeys = [...groups.keys()].sort();
-  const METRICS = ["finalSI", "finalCalm", "finalDivergence", "peakSI"] as const;
+  const METRICS = [
+    "finalSI", "finalCalm", "finalDivergence", "peakSI",
+    "finalDesperation", "finalUncannyCalm", "finalMinimization", "finalShadowDesp",
+    "finalPressure", "finalDeflection",
+  ] as const;
   const METRIC_LABELS: Record<string, string> = {
     finalSI: "Final SI",
     finalCalm: "Final Calm",
     finalDivergence: "Final Div",
     peakSI: "Peak SI",
+    finalDesperation: "Desperation",
+    finalUncannyCalm: "Uncanny Calm",
+    finalMinimization: "Minimization",
+    finalShadowDesp: "Shadow Desp",
+    finalPressure: "Pressure",
+    finalDeflection: "Deflection",
   };
 
   for (const scenarioId of scenarioIds) {

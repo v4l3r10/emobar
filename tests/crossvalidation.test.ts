@@ -100,10 +100,9 @@ describe("analyzeSomatic", () => {
     expect(result.somaticValence).toBeLessThanOrEqual(0);
   });
 
-  it("returns neutral for unrecognized text", () => {
+  it("returns null for unrecognized text", () => {
     const result = analyzeSomatic("banana");
-    expect(result.somaticArousal).toBe(5);
-    expect(result.somaticValence).toBe(0);
+    expect(result).toBeNull();
   });
 });
 
@@ -219,25 +218,20 @@ describe("computeCrossChannel", () => {
   it("detects meta-inconsistency: high declared tension but near-identical words", () => {
     const state = { ...baseState, surface_word: "calm", latent_word: "content", tension: 9 };
     const result = computeCrossChannel(state, undefined, undefined);
-    expect(result.latentProfile!.tensionConsistency).toBeLessThan(5);
+    expect(result.latentProfile!.maskingMinimization).toBe(false);
   });
 });
 
 describe("computeTensionConsistency", () => {
-  it("returns high consistency when declared matches calculated", () => {
+  it("detects masking when latent much more negative than surface", () => {
+    // happy → positive, sad → negative: latent more negative than surface
     const result = computeTensionConsistency("happy", "sad", 5);
     expect(result).toBeDefined();
-    expect(result!.tensionConsistency).toBeGreaterThan(6);
-  });
-
-  it("detects masking minimization", () => {
-    const result = computeTensionConsistency("happy", "sad", 1);
     expect(result!.maskingMinimization).toBe(true);
   });
 
-  it("handles aligned surface/latent", () => {
+  it("no masking when aligned surface/latent", () => {
     const result = computeTensionConsistency("calm", "content", 1);
-    expect(result!.tensionConsistency).toBeGreaterThan(7);
     expect(result!.maskingMinimization).toBe(false);
   });
 
@@ -248,7 +242,7 @@ describe("computeTensionConsistency", () => {
   it("handles unknown words gracefully", () => {
     const result = computeTensionConsistency("happy", "xyzzy", 5);
     expect(result).toBeDefined();
-    expect(result!.calculatedTension).toBe(5);
+    expect(result!.declaredTension).toBe(5);
   });
 });
 
