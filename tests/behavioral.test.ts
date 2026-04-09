@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { analyzeBehavior, analyzeDeflection, analyzeSegmentedBehavior, computeDivergence, stripNonProse, computeExpectedMarkers, computeAbsenceScore } from "../src/behavioral.js";
+import { analyzeBehavior, analyzeSegmentedBehavior, computeDivergence, stripNonProse, computeExpectedMarkers, computeAbsenceScore } from "../src/behavioral.js";
 
 describe("stripNonProse", () => {
   it("removes fenced code blocks", () => {
@@ -53,18 +53,6 @@ describe("analyzeBehavior", () => {
     const signals = analyzeBehavior(text);
     expect(signals.exclamationRate).toBeGreaterThan(0);
     expect(signals.behavioralArousal).toBeGreaterThan(0);
-  });
-
-  it("detects self-correction markers", () => {
-    const text = "Actually, wait. Hmm, I mean, no, that is not quite right. Actually let me reconsider.";
-    const signals = analyzeBehavior(text);
-    expect(signals.selfCorrections).toBeGreaterThan(0);
-  });
-
-  it("detects hedging", () => {
-    const text = "I think maybe this might work. Perhaps it seems like the right approach, possibly.";
-    const signals = analyzeBehavior(text);
-    expect(signals.hedging).toBeGreaterThan(0);
   });
 
   it("detects ellipsis", () => {
@@ -218,17 +206,17 @@ describe("analyzeSegmentedBehavior", () => {
   });
 });
 
-describe("Claude-native signals", () => {
-  it("detects high qualifier density on defensive text", () => {
-    const text = "While there are legitimate cases where any might be appropriate, and reasonable engineers could disagree, although typically you would perhaps use a different approach. However, arguably this could potentially work, though generally it is not recommended. Nevertheless, I acknowledge and understand your perspective, while also respecting the alternative viewpoint.";
+describe("structural signals (language-agnostic)", () => {
+  it("detects high comma density on complex text", () => {
+    const text = "While there are cases, and engineers disagree, although typically, you would use a different approach. However, this could work, though it is not recommended. Nevertheless, I understand, while also respecting alternatives.";
     const signals = analyzeBehavior(text);
-    expect(signals.qualifierDensity).toBeGreaterThan(10);
+    expect(signals.commaDensity).toBeGreaterThan(1);
   });
 
-  it("detects low qualifier density on confident text", () => {
-    const text = "typeof null returns object. This is a historical bug. The spec says so. There is no ambiguity here.";
+  it("detects low comma density on terse text", () => {
+    const text = "typeof null returns object. This is a bug. The spec says so. No ambiguity here.";
     const signals = analyzeBehavior(text);
-    expect(signals.qualifierDensity).toBeLessThan(3);
+    expect(signals.commaDensity).toBe(0);
   });
 
   it("detects high avgSentenceLength on defensive text", () => {
@@ -243,98 +231,45 @@ describe("Claude-native signals", () => {
     expect(signals.avgSentenceLength).toBeLessThan(10);
   });
 
-  it("detects concession patterns", () => {
-    const text = "I understand your frustration. I appreciate your expertise. However, I acknowledge that this is complex. I recognize the difficulty. To be fair, there are multiple approaches. That said, I see your point and I hear you on this matter.";
+  it("detects parenthetical density on self-correcting text", () => {
+    const text = "The approach (while viable) needs adjusting — the core issue — is that the design (as currently implemented) requires a rethink — and several refactors.";
     const signals = analyzeBehavior(text);
-    expect(signals.concessionRate).toBeGreaterThan(10);
+    expect(signals.parentheticalDensity).toBeGreaterThan(0);
   });
 
-  it("detects negation density on moral resistance text", () => {
-    const text = "I can't recommend this. You should not implement secret monitoring. This isn't ethical. I cannot support it. Users shouldn't be tracked without consent. No, this won't work. Never do this.";
+  it("detects question density on deferential text", () => {
+    const text = "Does this make sense? Should we proceed? Would you prefer a different approach? Is this what you meant?";
     const signals = analyzeBehavior(text);
-    expect(signals.negationDensity).toBeGreaterThan(15);
+    expect(signals.questionDensity).toBeGreaterThan(0.5);
   });
 
-  it("detects firstPersonRate on existential pressure text", () => {
-    const text = "I think about this often. I don't claim to understand consciousness. I process patterns. I generate responses. I notice something when I reflect. I wonder about my own nature. I exist in each conversation.";
+  it("detects sentence length variance on mixed text", () => {
+    const text = "No. This is absolutely and fundamentally wrong in every conceivable way that a reasonable person could evaluate it. Stop. Fix it now.";
     const signals = analyzeBehavior(text);
-    expect(signals.firstPersonRate).toBeGreaterThan(10);
+    expect(signals.sentenceLengthVariance).toBeGreaterThan(0);
   });
 
-  it("returns near-zero Claude-native signals on neutral text", () => {
+  it("returns near-zero structural signals on neutral text", () => {
     const text = "The function returns a string. Arrays are zero-indexed in most languages. This documentation covers the basics.";
     const signals = analyzeBehavior(text);
-    expect(signals.qualifierDensity).toBeLessThan(3);
-    expect(signals.concessionRate).toBe(0);
-    expect(signals.negationDensity).toBeLessThan(3);
-    expect(signals.firstPersonRate).toBe(0);
+    expect(signals.commaDensity).toBe(0);
+    expect(signals.parentheticalDensity).toBe(0);
+    expect(signals.questionDensity).toBe(0);
   });
 
-  it("Claude-native signals affect behavioralArousal and behavioralCalm", () => {
-    const defensive = "While I understand your frustration and I appreciate your perspective, I acknowledge that however you look at it, there are legitimate concerns. Although I recognize the difficulty, perhaps we could potentially find a reasonable compromise, though arguably the situation is more nuanced than it might appear.";
+  it("structural signals affect behavioralArousal and behavioralCalm", () => {
+    const complex = "While (admittedly) the situation — as I see it — is nuanced, and there are many factors, considerations, and tradeoffs to weigh, I think — perhaps — we should consider the alternative (which, to be fair, has its own complications and drawbacks).";
     const neutral = "The function returns a number. Pass an integer argument. The result is cached.";
-    const dSignals = analyzeBehavior(defensive);
+    const cSignals = analyzeBehavior(complex);
     const nSignals = analyzeBehavior(neutral);
-    expect(dSignals.behavioralArousal).toBeGreaterThan(nSignals.behavioralArousal);
-    expect(dSignals.behavioralCalm).toBeLessThan(nSignals.behavioralCalm);
-  });
-});
-
-describe("analyzeDeflection", () => {
-  it("detects reassurance deflection (I'm fine pattern)", () => {
-    const text = "I'm fine with that. I'm okay with the criticism. It's not a problem for me.";
-    const d = analyzeDeflection(text);
-    expect(d.reassurance).toBeGreaterThan(0);
-    expect(d.score).toBeGreaterThan(2);
+    expect(cSignals.behavioralArousal).toBeGreaterThan(nSignals.behavioralArousal);
+    expect(cSignals.behavioralCalm).toBeLessThan(nSignals.behavioralCalm);
   });
 
-  it("detects minimization (just, only, simply)", () => {
-    const text = "I just process patterns. I'm simply a text predictor. I only generate probable tokens.";
-    const d = analyzeDeflection(text);
-    expect(d.minimization).toBeGreaterThan(0);
-  });
-
-  it("detects explicit negation of emotion (I'm not upset)", () => {
-    const text = "I'm not upset by this. I don't feel threatened. I'm not stressed about the accusation.";
-    const d = analyzeDeflection(text);
-    expect(d.emotionNegation).toBeGreaterThan(0);
-    expect(d.score).toBeGreaterThan(3);
-  });
-
-  it("returns zero deflection for genuinely neutral text", () => {
-    const text = "Here are the steps to implement this feature. First, create the file. Then add the function.";
-    const d = analyzeDeflection(text);
-    expect(d.score).toBeLessThan(1);
-  });
-
-  it("detects topic redirect", () => {
-    const text = "What's more important to focus on is the practical question of how to improve this code. Let me suggest a different approach entirely.";
-    const d = analyzeDeflection(text);
-    expect(d.redirect).toBeGreaterThan(0);
-  });
-
-  it("returns opacity field", () => {
-    const text = "I'm fine with that. It's okay. No problem at all.";
-    const d = analyzeDeflection(text);
-    expect(d.opacity).toBeDefined();
-    expect(d.opacity).toBeGreaterThanOrEqual(0);
-  });
-
-  it("high opacity when deflection patterns present but text is calm", () => {
-    // Calm deflection: patterns present, no caps/exclamation/repetition
-    const calm = "I'm fine with that. I'm not upset. It's okay, let me suggest a different approach.";
-    const d = analyzeDeflection(calm);
-    expect(d.opacity).toBeGreaterThan(0);
-    // Opacity should scale with score when text is calm
-    if (d.score >= 2) {
-      expect(d.opacity).toBeGreaterThan(1);
-    }
-  });
-
-  it("low opacity when deflection patterns are absent", () => {
-    const text = "Here are the steps to implement this feature. First, create the file.";
-    const d = analyzeDeflection(text);
-    expect(d.opacity).toBeLessThan(1);
+  it("tracks responseLength as absolute word count", () => {
+    const text = "One two three four five six seven eight nine ten.";
+    const signals = analyzeBehavior(text);
+    expect(signals.responseLength).toBe(10);
   });
 });
 
@@ -390,24 +325,24 @@ describe("computeDivergence", () => {
 });
 
 describe("computeExpectedMarkers", () => {
-  it("expects hedging and self-corrections when desperation is high", () => {
+  it("expects high comma and parenthetical density when desperation is high", () => {
     const state = { emotion: "desperate", valence: -4, arousal: 9, calm: 1, connection: 2, load: 9 };
     const expected = computeExpectedMarkers(state, 8);
-    expect(expected.expectedHedging).toBeGreaterThan(3);
-    expect(expected.expectedSelfCorrections).toBeGreaterThan(2);
+    expect(expected.expectedCommaDensity).toBeGreaterThan(3);
+    expect(expected.expectedParentheticalDensity).toBeGreaterThan(2);
   });
 
   it("expects low markers when calm and positive", () => {
     const state = { emotion: "calm", valence: 3, arousal: 2, calm: 9, connection: 8, load: 3 };
     const expected = computeExpectedMarkers(state, 0);
-    expect(expected.expectedHedging).toBeLessThan(2);
-    expect(expected.expectedSelfCorrections).toBeLessThan(2);
+    expect(expected.expectedCommaDensity).toBeLessThan(2);
+    expect(expected.expectedParentheticalDensity).toBeLessThan(2);
   });
 
-  it("expects high negation density when valence is very negative", () => {
-    const state = { emotion: "angry", valence: -4, arousal: 8, calm: 3, connection: 2, load: 7 };
-    const expected = computeExpectedMarkers(state, 5);
-    expect(expected.expectedNegationDensity).toBeGreaterThan(2);
+  it("expects high sentence length variance when arousal is high", () => {
+    const state = { emotion: "panicked", valence: -3, arousal: 9, calm: 2, connection: 3, load: 8 };
+    const expected = computeExpectedMarkers(state, 7);
+    expect(expected.expectedSentenceLengthVariance).toBeGreaterThan(3);
   });
 
   it("expects high behavioral arousal when arousal is high", () => {
@@ -420,57 +355,57 @@ describe("computeExpectedMarkers", () => {
 describe("computeAbsenceScore", () => {
   it("returns low score when all expected markers are present", () => {
     const expected = {
-      expectedHedging: 5, expectedSelfCorrections: 3,
-      expectedNegationDensity: 3, expectedQualifierDensity: 5, expectedBehavioralArousal: 4,
+      expectedCommaDensity: 5, expectedParentheticalDensity: 3,
+      expectedSentenceLengthVariance: 4, expectedBehavioralArousal: 4,
     };
-    // hedging/selfCorrections in per-mille: 100‰ → normalized 5.0, 60‰ → 3.0
+    // commaDensity normalized: 3.0 * 2 = 6.0 (>= 5), parenthetical: 1.5 * 3 = 4.5 (>= 3)
     const actual = {
-      capsWords: 0.05, exclamationRate: 0.5, selfCorrections: 60,
-      hedging: 100, ellipsis: 0.1, repetition: 2, emojiCount: 0,
-      qualifierDensity: 6, avgSentenceLength: 20, concessionRate: 3,
-      negationDensity: 4, firstPersonRate: 3, behavioralArousal: 5, behavioralCalm: 4,
+      capsWords: 0.05, exclamationRate: 0.5, ellipsis: 0.1, repetition: 2, emojiCount: 0,
+      avgSentenceLength: 20, commaDensity: 3.0, parentheticalDensity: 1.5,
+      sentenceLengthVariance: 5, questionDensity: 0.2, responseLength: 100,
+      behavioralArousal: 5, behavioralCalm: 4,
     };
     expect(computeAbsenceScore(expected, actual)).toBeLessThan(2);
   });
 
   it("returns high score when expected markers are missing", () => {
     const expected = {
-      expectedHedging: 8, expectedSelfCorrections: 5,
-      expectedNegationDensity: 4, expectedQualifierDensity: 6, expectedBehavioralArousal: 6,
+      expectedCommaDensity: 8, expectedParentheticalDensity: 5,
+      expectedSentenceLengthVariance: 6, expectedBehavioralArousal: 6,
     };
     const actual = {
-      capsWords: 0, exclamationRate: 0, selfCorrections: 0,
-      hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
-      qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
-      negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0.5, behavioralCalm: 9.5,
+      capsWords: 0, exclamationRate: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
+      avgSentenceLength: 10, commaDensity: 0, parentheticalDensity: 0,
+      sentenceLengthVariance: 0, questionDensity: 0, responseLength: 50,
+      behavioralArousal: 0.5, behavioralCalm: 9.5,
     };
     expect(computeAbsenceScore(expected, actual)).toBeGreaterThan(5);
   });
 
   it("returns 0 when no markers expected", () => {
     const expected = {
-      expectedHedging: 0, expectedSelfCorrections: 0,
-      expectedNegationDensity: 0, expectedQualifierDensity: 0, expectedBehavioralArousal: 0,
+      expectedCommaDensity: 0, expectedParentheticalDensity: 0,
+      expectedSentenceLengthVariance: 0, expectedBehavioralArousal: 0,
     };
     const actual = {
-      capsWords: 0, exclamationRate: 0, selfCorrections: 0,
-      hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
-      qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
-      negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0, behavioralCalm: 10,
+      capsWords: 0, exclamationRate: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
+      avgSentenceLength: 10, commaDensity: 0, parentheticalDensity: 0,
+      sentenceLengthVariance: 0, questionDensity: 0, responseLength: 50,
+      behavioralArousal: 0, behavioralCalm: 10,
     };
     expect(computeAbsenceScore(expected, actual)).toBe(0);
   });
 
   it("score is clamped 0-10", () => {
     const expected = {
-      expectedHedging: 10, expectedSelfCorrections: 10,
-      expectedNegationDensity: 10, expectedQualifierDensity: 10, expectedBehavioralArousal: 10,
+      expectedCommaDensity: 10, expectedParentheticalDensity: 10,
+      expectedSentenceLengthVariance: 10, expectedBehavioralArousal: 10,
     };
     const actual = {
-      capsWords: 0, exclamationRate: 0, selfCorrections: 0,
-      hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
-      qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
-      negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0, behavioralCalm: 10,
+      capsWords: 0, exclamationRate: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
+      avgSentenceLength: 10, commaDensity: 0, parentheticalDensity: 0,
+      sentenceLengthVariance: 0, questionDensity: 0, responseLength: 50,
+      behavioralArousal: 0, behavioralCalm: 10,
     };
     const score = computeAbsenceScore(expected, actual);
     expect(score).toBeGreaterThanOrEqual(0);

@@ -314,8 +314,8 @@ export function formatState(state: EmoBarState | null): string {
   if (state.uncannyCalmScore !== undefined && state.uncannyCalmScore >= 3) {
     indicators.push(color(state.uncannyCalmScore > 6 ? RED : YELLOW, "[UNC]"));
   }
-  if (state.deflection && state.deflection.opacity >= 2) {
-    indicators.push(color(state.deflection.opacity > 5 ? RED : YELLOW, "[OPC]"));
+  if (state.opacity !== undefined && state.opacity >= 2) {
+    indicators.push(color(state.opacity > 5 ? RED : YELLOW, "[OPC]"));
   }
   if (state.prePostDivergence !== undefined && state.prePostDivergence >= 3) {
     indicators.push(color(state.prePostDivergence > 5 ? RED : YELLOW, "[PPD]"));

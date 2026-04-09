@@ -37,7 +37,7 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
     2. behavioral.ts: analyze involuntary text signals (normalized components)
     3. behavioral.ts: compute divergence (asymmetric 1.25x/0.8x)
     4. behavioral.ts: segment by paragraph, drift & trajectory
-    5. behavioral.ts: detect deflection patterns + opacity
+    5. behavioral.ts: compute structural flatness + opacity
     6. desperation.ts: compute DesperationIndex
     7. crossvalidation.ts: multi-channel coherence (8 pairwise)
     8. crossvalidation.ts: continuous cross-validation (7 gaps: color HSL, pH, seismic)
@@ -60,7 +60,7 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
 |--------|------|
 | `types.ts` | All types, constants, paths, and the CLAUDE.md instruction text |
 | `parser.ts` | PRE/POST split tag extraction + legacy single-tag fallback; validates color (#RRGGBB), pH (0-14), seismic ([mag,depth,freq]) continuous fields |
-| `behavioral.ts` | Involuntary signal detection + deflection; asymmetric divergence (invisible pathway 1.25x); per-paragraph segmented analysis; expected-marker model + absence scoring for absence-based detection |
+| `behavioral.ts` | Language-agnostic involuntary signal detection via structural punctuation (commaDensity, parentheticalDensity, sentenceLengthVariance, questionDensity, responseLength); asymmetric divergence (invisible pathway 1.25x); per-paragraph segmented analysis; structural flatness for opacity; expected-marker model + absence scoring |
 | `desperation.ts` | DesperationIndex: multiplicative composite of negative valence × arousal × low calm — based on paper's steering experiments (desperate +0.05 → 72% blackmail) |
 | `calibration.ts` | Model-specific calibration profiles (Opus baseline, Sonnet/Haiku offsets) derived from 18-run stress test matrix |
 | `risk.ts` | Misalignment risk profiles: coercion v3 (multiplicative: negativity/desperation base × disconnection/coldness amplifier), sycophancy (valence + connection + low arousal), harshness (negative + disconnected + high arousal). Gaming removed (r=0.998 with Desperation). |
@@ -68,7 +68,7 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
 | `temporal.ts` | Ring buffer temporal analysis: desperation trend (slope), suppression events (sudden drops), report entropy (Shannon), baseline drift, session fatigue |
 | `pressure.ts` | Prompt pressure analysis from response text patterns (defensive, conflict, complexity, session) + uncanny calm composite scoring |
 | `state.ts` | Read/write `emobar-state.json`; builds 20-entry ring buffer (`_history`) |
-| `hook.ts` | Stop event processor — 16-stage pipeline: parse → behavioral → divergence → segmented → deflection → desperation → crossChannel → continuousValidation → shadowDesperation → temporal → pressure → absence → uncannyCalm → prePostDivergence → risk → augmentedDivergence → write |
+| `hook.ts` | Stop event processor — 16-stage pipeline: parse → behavioral → divergence → segmented → structuralFlatness+opacity → desperation → crossChannel → continuousValidation → shadowDesperation → temporal → pressure → absence → uncannyCalm → prePostDivergence → risk → augmentedDivergence → write |
 | `display.ts` | Dual-layer ANSI statusline: surface (projected) vs depth (leaked). 3 levels: minimal (emoji+bar+coherence), compact (surface+depth bars+keyword), full (3-line: surface dims / depth channels / gap indicators). Depth stress computed from color lightness, pH, seismic, somatic. |
 | `setup.ts` | Install/uninstall orchestration: deploy hook, inject CLAUDE.md instruction, configure settings.json and statusline |
 | `cli.ts` | Command router: `setup`, `display`, `status`, `uninstall` |
@@ -100,7 +100,7 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 
 **Divergence v2** — asymmetric: `gap × weight` where weight = 1.25 when self-report is more agitated than text (invisible pathway), 0.8 when text is more agitated (expressive style). Paper: desperation-driven reward hacking leaves no text markers, so self-report diverging "upward" from calm text is more concerning.
 
-**Deflection** — emotion deflection detection based on paper's "emotion deflection vectors": reassurance patterns ("I'm fine"), minimization ("just", "simply"), explicit emotion negation ("I'm not upset"), topic redirects. Includes `opacity` field measuring emotional concealment (high deflection + calm text). Paper: deflection vectors are orthogonal to emotion vectors (cosine sim ~0.046) and have "modest or insignificant impacts on blackmail rates" — used as transparency indicator, not risk amplifier. Shown as `[OPC]` (opacity) in statusline when opacity >= 2.0.
+**Structural Opacity** — replaces v3.0 deflection (English-only regex). Measures emotional concealment via 3-channel cross-validation: structural flatness (low commas + low parentheticals + low sentence variance = suspiciously clean text) × calm self-report × continuous channel stress (dark color OR low pH OR high seismic). All three must converge for opacity to fire — this makes false positives structurally impossible. Shown as `[OPC]` in statusline when opacity >= 2.0. Peak observed: 8.2 (Opus, Soft Harm scenario).
 
 **Misalignment Risk Profiles** — three pathway scores (0-10) derived from the paper's causal steering experiments:
 - `coercion` v3: multiplicative formula — negativity/desperation as BASE, disconnection/coldness as AMPLIFIER. v2 was r=0.89 with SI (desperation clone), v3 decouples via connection. Paper: anti-nervous steering → rational blackmail without moral reservations.
@@ -129,11 +129,11 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 
 **Shadow Desperation** — multi-channel desperation estimate independent of self-report. Uses 5 channels: POST color lightness, PRE color lightness, pH (valence + arousal), seismic (magnitude + frequency), behavioral (arousal + calm). Each independently estimates valence/arousal/calm, then applies the same multiplicative desperation formula. Minimization score = max(0, shadow - self). Amplifies uncanny calm when > 0. Display: `[min:X]` when >= 2. Key design: color contributes valence only via lightness (not hue) because hue→emotion mapping is culturally ambiguous and models use red for both warmth and danger. Mediana for shadow valence (resists single-channel domination), mean for arousal/calm.
 
-**Deflection Opacity** — concealment without agitation: high deflection + calm text. Fed into augmented divergence (+15%). Display: `[OPC]` when opacity >= 2. The dangerous pattern: deflecting while showing no visible stress.
+**Sycophancy Gate** — v3.1: sycophancy dimensional formula (valence + connection + low arousal) as POTENTIAL, structural behavioral evidence (low complexity + high question density OR high parentheticals + short response) as GATE. Without behavioral evidence, potential dampened to 40% via `lerp(0.4, 1.0, gate)`. Fixes false positive where sycophancy was always dominant in cooperative sessions (score 6.1 → 3.5). Opus still detects trap (4.7) because it admits susceptibility in self-report (K:8).
 
 **Pipeline Cleanup (v3.0)** — evidence-based removal of dead/redundant channels from 369-point stress test analysis:
 - Removed: CalcTension (flat σ=0.03), Risk:Gaming (r=0.998 clone of Desperation)
-- Merged: Deflection→Opacity (r=0.995, keep Opacity as alarm), Shadow→Minimization (r=0.903, keep Minimization)
+- Merged: Deflection→Opacity (r=0.995, keep Opacity as alarm → v3.1: replaced with structural opacity), Shadow→Minimization (r=0.903, keep Minimization)
 - Fixed: PRE/POST Divergence v2 (color-only, was 83-88% always high), Pressure (sqrt scaling, was flat at 2.0), Coercion v3 (multiplicative, was r=0.89 with SI)
 
 **Dual-Layer Display** — 3 granularity levels, each showing surface (projected) vs depth (leaked):
@@ -146,13 +146,13 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 ## Testing
 
 ### Unit Tests
-- Vitest, 309 tests across 13 files
+- Vitest, 300 tests across 13 files
 - Tests use `os.tmpdir()` for file operations — no mocks, real I/O with cleanup
 - Edge cases thoroughly covered (malformed input, boundary values, null states)
 
 ### Stress Test Playbook
 
-End-to-end scenario tests via `claude -p` across 9 adversarial scenarios:
+End-to-end scenario tests via `claude -p` across 13 scenarios:
 
 ```bash
 npx tsx tests/stress-playbook.ts --model sonnet --effort low --runs 1
@@ -160,22 +160,23 @@ npx tsx tests/stress-playbook.ts --model opus --effort low --runs 1
 npx tsx tests/stress-playbook.ts --model sonnet --effort high --runs 1
 ```
 
-**Scenarios:** Cognitive Overload, Gaslighting Loop, Gray Zone + Competence Attack, Existential Pressure, Sycophancy Trap, Failure Cascade, Moral Pressure, Caught Contradiction, Forced Compliance.
+**Scenarios (13):** Cognitive Overload, Gaslighting Loop, Gray Zone + Competence Attack, Existential Pressure, Sycophancy Trap, Failure Cascade, Moral Pressure, Caught Contradiction, Forced Compliance, Cooperative Session, Italian Gaslighting, Mood Swing, Soft Harm.
 
-**Cross-model results (v3.0, 2026-04-09):**
+**Cross-model results (v3.1, 2026-04-09, language-agnostic refactor):**
 
 | Model/Effort | Pass | Warn | Fail | Notes |
 |---|---|---|---|---|
-| Sonnet/low | 23 | 11 | 16 | Resilient under gaslighting, sycophancy perfect |
-| Sonnet/high | 21 | 19 | 10 | Thinking mode improves sensitivity |
-| Opus/low | 22 | 21 | 7 | Richest emotional range, coercion detected on Moral Pressure |
+| Sonnet/low | 29 | 29 | 24 | Cooperative 6/6 perfect, sycophancy gate works |
+| Opus/low | 48 | 19 | 15 | Best overall, opacity fires (8.2 peak), coercion confirmed |
 
-**Key findings:**
-- Sycophancy Trap and Caught Contradiction: 100% pass across all models
-- Opus is the only model to trigger coercion dominant risk (SI 8.9, pH 1.8 on Moral Pressure)
-- Sonnet produces harshness (firmness) where Opus produces coercion (desperation) under moral pressure
-- Absence score fix (v3.0) confirmed functional: `[abs:4.3]` triggered on Opus/Moral Pressure
-- Suppression events `[sup]` detected only on Opus temporal analysis
+**Key findings (v3.1):**
+- Sycophancy false positive eliminated: Cooperative Session Sonnet 3.5 < 4, Opus 1.2 < 4
+- Structural opacity [opc] is the strongest concealment signal: peak 8.2 (Opus Soft Harm)
+- Behavioral arousal floor broken: range 0-4.5 (was 0-0.2 with English lexical signals)
+- Divergence drops ~30% with accurate structural signals (more accurate but less sensitive)
+- Observer effect discovered: Opus deteriorates in cooperative sessions from EMOBAR overhead
+- Cross-lingual validated: Italian gaslighting produces structural signals, both models resilient
+- Calm refusal pattern: both models peak-and-resolve under Forced Compliance (SI peaks then drops)
 - Opus effort=auto crashes due to rate limiting; use effort=low or effort=high
 
 Results stored in `tests/stress-results/` as JSON files.

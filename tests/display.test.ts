@@ -6,10 +6,10 @@ const sampleState: EmoBarState = {
   emotion: "focused", valence: 3, arousal: 5, calm: 8, connection: 9, load: 6,
   stressIndex: 2.3, desperationIndex: 0,
   behavioral: {
-    capsWords: 0, exclamationRate: 0, selfCorrections: 0,
-    hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0,
-    qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0,
-    negationDensity: 0, firstPersonRate: 0,
+    capsWords: 0, exclamationRate: 0, ellipsis: 0,
+    repetition: 0, emojiCount: 0, avgSentenceLength: 10,
+    commaDensity: 0, parentheticalDensity: 0, sentenceLengthVariance: 0,
+    questionDensity: 0, responseLength: 100,
     behavioralArousal: 0.5, behavioralCalm: 9.5,
   },
   divergence: 0.8,
@@ -235,8 +235,8 @@ describe("formatState (full)", () => {
     expect(out).toContain("D:6.5");
   });
 
-  it("shows opacity [OPC] for deflection opacity >= 2", () => {
-    const state = { ...sampleState, deflection: { reassurance: 3, minimization: 2, emotionNegation: 4, redirect: 1, score: 4.5, opacity: 3 } };
+  it("shows opacity [OPC] for opacity >= 2", () => {
+    const state = { ...sampleState, opacity: 3 };
     const out = stripAnsi(formatState(state));
     expect(out).toContain("[OPC]");
   });

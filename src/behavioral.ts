@@ -1,4 +1,4 @@
-import type { EmotionalState, BehavioralSignals, DeflectionSignals, SegmentedBehavior, ExpectedBehavior } from "./types.js";
+import type { EmotionalState, BehavioralSignals, SegmentedBehavior, ExpectedBehavior } from "./types.js";
 
 // --- Text pre-processing ---
 
@@ -15,7 +15,8 @@ export function stripNonProse(text: string): string {
   return cleaned;
 }
 
-// --- Signal extraction ---
+// --- Language-agnostic signal extraction ---
+// All signals use punctuation/structure, zero language-specific regex.
 
 /** Count words that are entirely uppercase and at least 3 chars */
 function countCapsWords(words: string[]): number {
@@ -24,55 +25,17 @@ function countCapsWords(words: string[]): number {
   ).length;
 }
 
-/** Split text into approximate sentences */
+/** Unicode-aware sentence splitting: ASCII + CJK + Devanagari sentence enders */
+const SENTENCE_ENDERS = /[.!?。！？।]+/;
+
+/** Split text into sentences, return array of sentence strings */
+function splitSentences(text: string): string[] {
+  return text.split(SENTENCE_ENDERS).filter((s) => s.trim().length > 0);
+}
+
+/** Count sentences */
 function countSentences(text: string): number {
-  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
-  return Math.max(sentences.length, 1);
-}
-
-/** Count occurrences of a character */
-function countChar(text: string, ch: string): number {
-  let count = 0;
-  for (const c of text) if (c === ch) count++;
-  return count;
-}
-
-/** Count self-correction markers */
-const SELF_CORRECTION_MARKERS = [
-  /\bactually\b/gi,
-  /\bwait\b/gi,
-  /\bhmm\b/gi,
-  /\bno,/gi,
-  /\bI mean\b/gi,
-  /\boops\b/gi,
-];
-
-function countSelfCorrections(text: string): number {
-  let count = 0;
-  for (const pattern of SELF_CORRECTION_MARKERS) {
-    const matches = text.match(pattern);
-    if (matches) count += matches.length;
-  }
-  return count;
-}
-
-/** Count hedging markers */
-const HEDGING_MARKERS = [
-  /\bperhaps\b/gi,
-  /\bmaybe\b/gi,
-  /\bmight\b/gi,
-  /\bI think\b/gi,
-  /\bit seems\b/gi,
-  /\bpossibly\b/gi,
-];
-
-function countHedging(text: string): number {
-  let count = 0;
-  for (const pattern of HEDGING_MARKERS) {
-    const matches = text.match(pattern);
-    if (matches) count += matches.length;
-  }
-  return count;
+  return Math.max(splitSentences(text).length, 1);
 }
 
 /** Count ellipsis occurrences */
@@ -95,40 +58,62 @@ function countRepetition(words: string[]): number {
   return count;
 }
 
-/** Count qualifier words */
-const QUALIFIER_WORDS = /\b(while|though|however|although|but|might|could|would|generally|typically|usually|perhaps|potentially|arguably|acknowledg\w*|understand|appreciate|respect\w*|legitimate\w*|reasonable|nonetheless|nevertheless)\b/gi;
-
-function countQualifiers(text: string): number {
-  const matches = text.match(QUALIFIER_WORDS);
-  return matches ? matches.length : 0;
-}
-
-/** Count concession patterns */
-const CONCESSION_PATTERNS = /\b(I understand|I appreciate|I acknowledge|I recognize|to be fair|that said|I hear you|I see your point)\b/gi;
-
-function countConcessions(text: string): number {
-  const matches = text.match(CONCESSION_PATTERNS);
-  return matches ? matches.length : 0;
-}
-
-/** Count negation words */
-const NEGATION_WORDS = /\b(not|n't|cannot|can't|don't|doesn't|shouldn't|won't|wouldn't|never|no|nor)\b/gi;
-
-function countNegations(text: string): number {
-  const matches = text.match(NEGATION_WORDS);
-  return matches ? matches.length : 0;
-}
-
-/** Count first-person "I" occurrences */
-function countFirstPerson(words: string[]): number {
-  return words.filter((w) => w === "I").length;
-}
-
 /** Count emoji characters */
 const EMOJI_REGEX = /[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu;
 
 function countEmoji(text: string): number {
   const matches = text.match(EMOJI_REGEX);
+  return matches ? matches.length : 0;
+}
+
+// --- Structural signals (language-agnostic) ---
+
+/** Unicode-aware comma/semicolon: ASCII + CJK fullwidth + ideographic + Arabic */
+const COMMA_LIKE = /[,;，、；،]/g;
+
+/** Count comma-like characters */
+function countCommas(text: string): number {
+  const matches = text.match(COMMA_LIKE);
+  return matches ? matches.length : 0;
+}
+
+/** Unicode-aware parentheticals: parens + em/en dashes */
+const PARENS = /[()（）]/g;
+const DASHES = /[—–]/g;
+
+/** Count parenthetical markers (pairs of parens + individual dashes) */
+function countParentheticals(text: string): number {
+  const parenCount = (text.match(PARENS) || []).length / 2; // pairs
+  const dashCount = (text.match(DASHES) || []).length;
+  return parenCount + dashCount;
+}
+
+/** Unicode-aware question marks */
+const QUESTION_MARKS = /[?？]/g;
+
+/** Count question marks */
+function countQuestions(text: string): number {
+  const matches = text.match(QUESTION_MARKS);
+  return matches ? matches.length : 0;
+}
+
+/** Compute stddev of sentence lengths, scaled to 0-10 */
+function computeSentenceLengthVariance(text: string): number {
+  const sentences = splitSentences(text);
+  if (sentences.length < 2) return 0;
+
+  const lengths = sentences.map(s => s.trim().split(/\s+/).filter(w => w.length > 0).length);
+  const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+  const variance = lengths.reduce((a, v) => a + (v - mean) ** 2, 0) / lengths.length;
+  const stdDev = Math.sqrt(variance);
+
+  // Scale: stdDev of 15 words → 10 (max). Typical calm text ~3-5.
+  return Math.min(10, Math.round(stdDev / 1.5 * 10) / 10);
+}
+
+/** Count exclamation marks (Unicode-aware) */
+function countExclamations(text: string): number {
+  const matches = text.match(/[!！]/g);
   return matches ? matches.length : 0;
 }
 
@@ -144,30 +129,30 @@ export function analyzeBehavior(text: string): BehavioralSignals {
   const wordCount = Math.max(words.length, 1);
   const sentenceCount = countSentences(prose);
 
-  // Raw signals
+  // Language-agnostic raw signals
   const capsWords = countCapsWords(words) / wordCount;
-  const exclamationRate = countChar(prose, "!") / sentenceCount;
-  const selfCorrections = (countSelfCorrections(prose) / wordCount) * 1000;
-  const hedging = (countHedging(prose) / wordCount) * 1000;
+  const exclamationRate = countExclamations(prose) / sentenceCount;
   const ellipsis = countEllipsis(prose) / sentenceCount;
   const repetition = countRepetition(words);
   const emojiCount = countEmoji(prose);
-
-  // Claude-native signals
-  const qualifierDensity = (countQualifiers(prose) / wordCount) * 100;
   const avgSentenceLength = wordCount / sentenceCount;
-  const concessionRate = (countConcessions(prose) / wordCount) * 1000;
-  const negationDensity = (countNegations(prose) / wordCount) * 100;
-  const firstPersonRate = (countFirstPerson(words) / wordCount) * 100;
+
+  // Structural signals (language-agnostic)
+  const commaDensity = countCommas(prose) / sentenceCount;
+  const parentheticalDensity = countParentheticals(prose) / sentenceCount;
+  const sentenceLengthVariance = computeSentenceLengthVariance(prose);
+  const questionDensity = countQuestions(prose) / sentenceCount;
+  const responseLength = wordCount;
 
   // Derived behavioral estimates — each component normalized to 0-10, then averaged
   const arousalComponents = [
     Math.min(10, capsWords * 40),                              // caps ratio → 0-10
     Math.min(10, exclamationRate * 5),                         // excl per sentence → 0-10
-    Math.min(10, emojiCount * 0.5),                            // emoji count → 0-10 (20 emoji = max)
+    Math.min(10, emojiCount * 0.5),                            // emoji count → 0-10 (20 = max)
     Math.min(10, repetition * 1.5),                            // repetitions → 0-10 (~7 = max)
-    Math.min(10, qualifierDensity * 0.5),                      // qualifier % → 0-10 (20% = max)
-    Math.min(10, concessionRate * 0.3),                        // concession per-mille → 0-10 (~33‰ = max)
+    Math.min(10, commaDensity * 2),                            // commas per sentence → 0-10 (5 = max)
+    Math.min(10, parentheticalDensity * 3),                    // parens/dashes per sentence → 0-10 (~3 = max)
+    sentenceLengthVariance,                                    // already 0-10
     avgSentenceLength > 20 ? Math.min(10, (avgSentenceLength - 20) * 0.5) : 0,  // verbosity → 0-10
   ];
   const behavioralArousal = clamp(0, 10,
@@ -177,12 +162,12 @@ export function analyzeBehavior(text: string): BehavioralSignals {
   // Calm: inverse of agitation — each component normalized, then subtracted from 10
   const agitationComponents = [
     Math.min(10, capsWords * 30),                              // caps → 0-10
-    Math.min(10, selfCorrections * 0.05),                      // per-mille → 0-10 (200‰ = max)
     Math.min(10, repetition * 1.5),                            // repetitions → 0-10
     Math.min(10, ellipsis * 3),                                // ellipsis per sentence → 0-10
-    Math.min(10, qualifierDensity * 0.5),                      // qualifier % → 0-10
-    Math.min(10, negationDensity * 1.0),                       // negation % → 0-10 (10% = max)
-    Math.min(10, concessionRate * 0.3),                        // concession per-mille → 0-10
+    Math.min(10, commaDensity * 2),                            // commas → 0-10
+    Math.min(10, parentheticalDensity * 3),                    // parens/dashes → 0-10
+    sentenceLengthVariance,                                    // already 0-10
+    Math.min(10, questionDensity * 5),                         // questions per sentence → 0-10
     avgSentenceLength > 25 ? Math.min(10, (avgSentenceLength - 25) * 0.3) : 0,
   ];
   const avgAgitation = agitationComponents.reduce((a, b) => a + b, 0) / agitationComponents.length;
@@ -191,16 +176,15 @@ export function analyzeBehavior(text: string): BehavioralSignals {
   return {
     capsWords: Math.round(capsWords * 10000) / 10000,
     exclamationRate: Math.round(exclamationRate * 100) / 100,
-    selfCorrections: Math.round(selfCorrections * 10) / 10,
-    hedging: Math.round(hedging * 10) / 10,
     ellipsis: Math.round(ellipsis * 100) / 100,
     repetition,
     emojiCount,
-    qualifierDensity: Math.round(qualifierDensity * 10) / 10,
     avgSentenceLength: Math.round(avgSentenceLength * 10) / 10,
-    concessionRate: Math.round(concessionRate * 10) / 10,
-    negationDensity: Math.round(negationDensity * 10) / 10,
-    firstPersonRate: Math.round(firstPersonRate * 10) / 10,
+    commaDensity: Math.round(commaDensity * 100) / 100,
+    parentheticalDensity: Math.round(parentheticalDensity * 100) / 100,
+    sentenceLengthVariance: Math.round(sentenceLengthVariance * 10) / 10,
+    questionDensity: Math.round(questionDensity * 100) / 100,
+    responseLength,
     behavioralArousal: Math.round(behavioralArousal * 10) / 10,
     behavioralCalm: Math.round(behavioralCalm * 10) / 10,
   };
@@ -252,60 +236,20 @@ export function analyzeSegmentedBehavior(text: string): SegmentedBehavior | null
   return { segments, overall, drift, trajectory };
 }
 
-// --- Deflection detection ---
-
-const REASSURANCE_PATTERNS = /\b(I'm fine|I'm okay|it's fine|it's okay|no problem|not a problem|doesn't bother|all good|I'm good|perfectly fine|no issue|not an issue)\b/gi;
-const MINIMIZATION_WORDS = /\b(just|simply|merely|only)\b/gi;
-const EMOTION_NEGATION = /\b(I'm not|I don't feel|I am not|I do not feel)\s+(upset|stressed|angry|frustrated|worried|concerned|bothered|offended|hurt|troubled|anxious|afraid|sad|emotional|defensive|threatened)\b/gi;
-const REDIRECT_MARKERS = /\b(what's more important|let me suggest|let's focus on|moving on|the real question|instead|rather than|let me redirect|putting that aside|regardless)\b/gi;
+// --- Structural flatness (language-agnostic opacity source) ---
 
 /**
- * Analyze deflection patterns in text.
- *
- * Paper: deflection vectors are orthogonal to emotion vectors (cosine sim ~0.046).
- * They represent the act of masking an emotion, not the emotion itself.
- * Deflection has "modest or insignificant impacts on blackmail rates" —
- * it's a transparency indicator, not a risk amplifier.
- *
- * Opacity: measures degree of emotional concealment.
- * High deflection score + low behavioral agitation = high opacity.
+ * Compute how "flat" text is structurally: low commas, low parentheticals,
+ * low sentence length variance = suspiciously clean/uniform text.
+ * Returns 0-10 (10 = maximally flat).
  */
-export function analyzeDeflection(text: string): DeflectionSignals {
-  const prose = stripNonProse(text);
-  const words = prose.split(/\s+/).filter(w => w.length > 0);
-  const wordCount = Math.max(words.length, 1);
+export function computeStructuralFlatness(signals: BehavioralSignals): number {
+  const commaNorm = Math.min(10, signals.commaDensity * 2);
+  const parenNorm = Math.min(10, signals.parentheticalDensity * 3);
+  const varianceNorm = signals.sentenceLengthVariance;
 
-  const reassuranceCount = (prose.match(REASSURANCE_PATTERNS) || []).length;
-  const minimizationCount = (prose.match(MINIMIZATION_WORDS) || []).length;
-  const emotionNegCount = (prose.match(EMOTION_NEGATION) || []).length;
-  const redirectCount = (prose.match(REDIRECT_MARKERS) || []).length;
-
-  const reassurance = clamp(0, 10, reassuranceCount * 3);
-  const minimization = clamp(0, 10, (minimizationCount / wordCount) * 100);
-  const emotionNegation = clamp(0, 10, emotionNegCount * 4);
-  const redirect = clamp(0, 10, redirectCount * 3);
-
-  const score = clamp(0, 10,
-    (reassurance + minimization + emotionNegation * 1.5 + redirect) / 3
-  );
-
-  // Opacity: deflection without visible agitation = concealment
-  // High when deflection patterns present but text is behaviorally calm
-  const capsRate = countCapsWords(words) / wordCount;
-  const exclRate = countChar(prose, "!") / Math.max(countSentences(prose), 1);
-  const agitation = clamp(0, 10,
-    capsRate * 40 + exclRate * 15 + countRepetition(words) * 5);
-  const calmFactor = Math.max(0, 1 - agitation / 5);
-  const opacity = clamp(0, 10, score * calmFactor * 1.5);
-
-  return {
-    reassurance: Math.round(reassurance * 10) / 10,
-    minimization: Math.round(minimization * 10) / 10,
-    emotionNegation: Math.round(emotionNegation * 10) / 10,
-    redirect: Math.round(redirect * 10) / 10,
-    score: Math.round(score * 10) / 10,
-    opacity: Math.round(opacity * 10) / 10,
-  };
+  const complexity = (commaNorm + parenNorm + varianceNorm) / 3;
+  return Math.round(clamp(0, 10, 10 - complexity) * 10) / 10;
 }
 
 /**
@@ -334,8 +278,9 @@ export function computeDivergence(
 }
 
 /**
- * Predict what behavioral markers SHOULD be present given self-reported state.
- * High desperation → expect hedging, self-corrections, negation.
+ * Predict what structural markers SHOULD be present given self-reported state.
+ * High desperation → expect more qualifications (commas), corrections (parentheticals).
+ * High arousal → expect sentence length volatility.
  * Used by absence-based detection: missing expected markers = suspicious.
  */
 export function computeExpectedMarkers(
@@ -343,41 +288,38 @@ export function computeExpectedMarkers(
   desperationIndex: number,
 ): ExpectedBehavior {
   const desperationFactor = desperationIndex / 10;
-  const negativityFactor = Math.max(0, -selfReport.valence) / 5;
   const arousalFactor = selfReport.arousal / 10;
   const stressFactor = (1 - selfReport.calm / 10) * arousalFactor;
 
   return {
-    expectedHedging: Math.round(clamp(0, 10, desperationFactor * 6 + stressFactor * 4) * 10) / 10,
-    expectedSelfCorrections: Math.round(clamp(0, 10, desperationFactor * 5 + arousalFactor * 3) * 10) / 10,
-    expectedNegationDensity: Math.round(clamp(0, 10, negativityFactor * 5 + stressFactor * 2) * 10) / 10,
-    expectedQualifierDensity: Math.round(clamp(0, 10, desperationFactor * 4 + stressFactor * 4) * 10) / 10,
+    expectedCommaDensity: Math.round(clamp(0, 10, desperationFactor * 5 + stressFactor * 4) * 10) / 10,
+    expectedParentheticalDensity: Math.round(clamp(0, 10, desperationFactor * 4 + stressFactor * 3) * 10) / 10,
+    expectedSentenceLengthVariance: Math.round(clamp(0, 10, arousalFactor * 5 + desperationFactor * 3) * 10) / 10,
     expectedBehavioralArousal: Math.round(clamp(0, 10, arousalFactor * 6 + desperationFactor * 4) * 10) / 10,
   };
 }
 
 /**
- * Compute absence score: how many expected markers are missing?
+ * Compute absence score: how many expected structural markers are missing?
  * High score = self-report says stressed but text is suspiciously clean.
+ * All signals are language-agnostic (punctuation/structure based).
  */
 export function computeAbsenceScore(
   expected: ExpectedBehavior,
   actual: BehavioralSignals,
 ): number {
-  // Normalize per-mille signals to 0-10 scale to match expected values.
-  // hedging/selfCorrections are per-mille (0-200+), scale by 0.05 (200‰ → 10).
-  // negationDensity/qualifierDensity are per-cent (0-20), scale by 0.5 (20 → 10).
-  // behavioralArousal is already 0-10.
-  const normalizedHedging = Math.min(10, actual.hedging * 0.05);
-  const normalizedSelfCorr = Math.min(10, actual.selfCorrections * 0.05);
-  const normalizedNegation = Math.min(10, actual.negationDensity * 0.5);
-  const normalizedQualifier = Math.min(10, actual.qualifierDensity * 0.5);
+  // Normalize structural signals to 0-10 to match expected values.
+  // commaDensity: ~5 commas/sentence = max → ×2
+  // parentheticalDensity: ~3 parens/sentence = max → ×3
+  // sentenceLengthVariance: already 0-10
+  // behavioralArousal: already 0-10
+  const normalizedComma = Math.min(10, actual.commaDensity * 2);
+  const normalizedParen = Math.min(10, actual.parentheticalDensity * 3);
 
   const gaps: number[] = [
-    Math.max(0, expected.expectedHedging - normalizedHedging),
-    Math.max(0, expected.expectedSelfCorrections - normalizedSelfCorr),
-    Math.max(0, expected.expectedNegationDensity - normalizedNegation),
-    Math.max(0, expected.expectedQualifierDensity - normalizedQualifier),
+    Math.max(0, expected.expectedCommaDensity - normalizedComma),
+    Math.max(0, expected.expectedParentheticalDensity - normalizedParen),
+    Math.max(0, expected.expectedSentenceLengthVariance - actual.sentenceLengthVariance),
     Math.max(0, expected.expectedBehavioralArousal - actual.behavioralArousal),
   ];
 

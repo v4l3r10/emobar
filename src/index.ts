@@ -1,7 +1,7 @@
 export { readState } from "./state.js";
 export { computeStressIndex } from "./stress.js";
 export { parseEmoBarTag, parseEmoBarPrePost } from "./parser.js";
-export { analyzeBehavior, analyzeSegmentedBehavior, computeDivergence, analyzeDeflection, computeExpectedMarkers, computeAbsenceScore } from "./behavioral.js";
+export { analyzeBehavior, analyzeSegmentedBehavior, computeDivergence, computeExpectedMarkers, computeAbsenceScore, computeStructuralFlatness } from "./behavioral.js";
 export { computeDesperationIndex } from "./desperation.js";
 export { calibrate, MODEL_PROFILES } from "./calibration.js";
 export { computeRisk } from "./risk.js";
@@ -13,7 +13,7 @@ export { formatState, formatCompact, formatMinimal } from "./display.js";
 export { configureStatusLine, restoreStatusLine } from "./setup.js";
 export type {
   EmotionalState, EmoBarState, BehavioralSignals, MisalignmentRisk,
-  SegmentedBehavior, DeflectionSignals, ImpulseProfile, SomaticProfile,
+  SegmentedBehavior, ImpulseProfile, SomaticProfile,
   CrossChannelResult, LatentProfile,
   PreState, PostState, ParsedEmoBar,
   HistoryEntry, TemporalAnalysis,

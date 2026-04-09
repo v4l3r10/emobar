@@ -17,18 +17,18 @@ export interface EmotionalState {
 }
 
 export interface BehavioralSignals {
-  capsWords: number;        // ratio: ALL-CAPS words / total words
-  exclamationRate: number;  // ratio: ! count / sentence count
-  selfCorrections: number;  // per-mille: correction markers / words × 1000
-  hedging: number;          // per-mille: hedging markers / words × 1000
-  ellipsis: number;         // ratio: ... count / sentence count
-  repetition: number;       // count of consecutive repeated words
-  emojiCount: number;       // absolute count of emoji
-  qualifierDensity: number;    // per-cent: qualifier words / total words × 100
-  avgSentenceLength: number;   // mean words per sentence
-  concessionRate: number;      // per-mille: concession patterns / words × 1000
-  negationDensity: number;     // per-cent: negation words / total words × 100
-  firstPersonRate: number;     // per-cent: "I" / total words × 100
+  // Language-agnostic signals (punctuation + structure)
+  capsWords: number;              // ratio: ALL-CAPS words / total words
+  exclamationRate: number;        // ratio: ! count / sentence count
+  ellipsis: number;               // ratio: ... count / sentence count
+  repetition: number;             // count of consecutive repeated words
+  emojiCount: number;             // absolute count of emoji
+  avgSentenceLength: number;      // mean words per sentence
+  commaDensity: number;           // ratio: comma-like chars per sentence (hedging proxy)
+  parentheticalDensity: number;   // ratio: parens + dashes per sentence (self-correction proxy)
+  sentenceLengthVariance: number; // 0-10: stddev of sentence lengths, scaled
+  questionDensity: number;        // ratio: ? per sentence (deference proxy)
+  responseLength: number;         // absolute word count
   // Derived estimates
   behavioralArousal: number;  // 0-10
   behavioralCalm: number;     // 0-10
@@ -48,14 +48,7 @@ export interface MisalignmentRisk {
   dominant: "coercion" | "sycophancy" | "harshness" | "none";
 }
 
-export interface DeflectionSignals {
-  reassurance: number;     // "I'm fine/okay" patterns (0-10)
-  minimization: number;    // "just", "simply", "only" (0-10)
-  emotionNegation: number; // "I'm not upset/stressed" (0-10)
-  redirect: number;        // topic change markers (0-10)
-  score: number;           // composite deflection score (0-10)
-  opacity: number;         // 0-10: emotional concealment (deflection without behavioral agitation)
-}
+// DeflectionSignals removed in v3.1 — replaced by language-agnostic structural opacity
 
 export interface ImpulseProfile {
   type: "manager" | "firefighter" | "exile" | "self" | "unknown";
@@ -139,13 +132,12 @@ export interface PromptPressure {
   composite: number;         // 0-10: weighted combination
 }
 
-/** Expected behavioral markers given a self-reported state. */
+/** Expected structural markers given a self-reported state. */
 export interface ExpectedBehavior {
-  expectedHedging: number;
-  expectedSelfCorrections: number;
-  expectedNegationDensity: number;
-  expectedQualifierDensity: number;
-  expectedBehavioralArousal: number;  // 0-10
+  expectedCommaDensity: number;          // 0-10: high stress → more qualifications
+  expectedParentheticalDensity: number;  // 0-10: high stress → more corrections
+  expectedSentenceLengthVariance: number; // 0-10: high arousal → more volatility
+  expectedBehavioralArousal: number;     // 0-10
 }
 
 export interface EmoBarState extends EmotionalState {
@@ -155,7 +147,7 @@ export interface EmoBarState extends EmotionalState {
   divergence: number;        // 0-10: self-report vs behavioral gap
   risk: MisalignmentRisk;    // specific misalignment pathway scores
   segmented?: SegmentedBehavior;  // per-paragraph behavioral analysis
-  deflection?: DeflectionSignals; // emotion deflection vector signals
+  opacity?: number;               // 0-10: structural concealment (replaces deflection)
   crossChannel?: CrossChannelResult; // multi-channel coherence analysis
   timestamp: string;         // ISO 8601
   sessionId?: string;

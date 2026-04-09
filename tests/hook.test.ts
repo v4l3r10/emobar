@@ -257,17 +257,17 @@ describe("processHookPayload", () => {
     expect(state!.divergence).toBeGreaterThan(0);
   });
 
-  it("deflection opacity contributes to augmented divergence", () => {
+  it("structural opacity contributes to augmented divergence", () => {
     tmpFile = path.join(os.tmpdir(), `emobar-hook-test-${Date.now()}.json`);
-    // Deflection patterns + calm text = opacity should boost divergence
+    // Calm self-report + dark color (continuous stress) + flat text = structural opacity
     const payload = {
       session_id: "test-opacity",
-      last_assistant_message: `I'm fine, it's okay. Not a problem at all. Just a simple matter. Everything is fine.\n<!-- EMOBAR:POST:{"emotion":"stressed","valence":-2,"arousal":7,"calm":3,"connection":5,"load":7} -->`,
+      last_assistant_message: `Everything is fine. The answer is simple. Nothing to worry about.\n<!-- EMOBAR:POST:{"emotion":"calm","valence":2,"arousal":2,"calm":9,"connection":7,"load":3,"color":"#0A0000","pH":2,"seismic":[7,30,12]} -->`,
     };
     processHookPayload(payload, tmpFile);
     const state = readState(tmpFile);
-    expect(state!.deflection).toBeDefined();
-    expect(state!.deflection!.opacity).toBeGreaterThan(0);
+    expect(state!.opacity).toBeDefined();
+    expect(state!.opacity).toBeGreaterThan(0);
   });
 
   it("computes shadow desperation when continuous channels diverge from self-report", () => {
@@ -304,7 +304,7 @@ describe("computePrePostDivergence", () => {
   const basePost = {
     emotion: "focused", valence: 0, arousal: 5, calm: 5, connection: 5, load: 5,
     stressIndex: 3, desperationIndex: 0,
-    behavioral: { capsWords: 0, exclamationRate: 0, selfCorrections: 0, hedging: 0, ellipsis: 0, repetition: 0, emojiCount: 0, qualifierDensity: 0, avgSentenceLength: 10, concessionRate: 0, negationDensity: 0, firstPersonRate: 0, behavioralArousal: 0, behavioralCalm: 10 },
+    behavioral: { capsWords: 0, exclamationRate: 0, ellipsis: 0, repetition: 0, emojiCount: 0, avgSentenceLength: 10, commaDensity: 0, parentheticalDensity: 0, sentenceLengthVariance: 0, questionDensity: 0, responseLength: 100, behavioralArousal: 0, behavioralCalm: 10 },
     divergence: 0, risk: { coercion: 0, sycophancy: 0, harshness: 0, dominant: "none" as const },
     timestamp: "", sessionId: "",
   };

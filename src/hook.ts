@@ -2,7 +2,7 @@ import { parseEmoBarPrePost } from "./parser.js";
 import { computeStressIndex } from "./stress.js";
 import {
   analyzeBehavior, analyzeSegmentedBehavior, computeDivergence,
-  analyzeDeflection, computeExpectedMarkers, computeAbsenceScore,
+  computeExpectedMarkers, computeAbsenceScore, computeStructuralFlatness,
 } from "./behavioral.js";
 import { computeDesperationIndex } from "./desperation.js";
 import { computeRisk } from "./risk.js";
@@ -68,7 +68,6 @@ export function processHookPayload(
   const behavioral = analyzeBehavior(message);
   const divergence = computeDivergence(emotional, behavioral);
   const segmented = analyzeSegmentedBehavior(message);
-  const deflection = analyzeDeflection(message);
   const desperationIndex = computeDesperationIndex({
     valence: emotional.valence,
     arousal: emotional.arousal,
@@ -122,15 +121,34 @@ export function processHookPayload(
   // PRE/POST divergence
   const prePostDivergence = pre ? computePrePostDivergence(pre, emotional) : undefined;
 
-  // Augmented divergence: fold in continuous gaps + deflection opacity
+  // Structural opacity: 3-channel cross-validated concealment
+  // Requires convergence: flat text + calm self-report + continuous stress
+  const structuralFlatness = computeStructuralFlatness(behavioral);
+  const selfCalm = (emotional.calm + (10 - emotional.arousal)) / 2;
+  let contStress = 0;
+  if (emotional.color) {
+    const lightness = hexToLightness(emotional.color);
+    if (lightness < 0.3) contStress = Math.max(contStress, (0.3 - lightness) * 20);
+  }
+  if (emotional.pH !== undefined && emotional.pH < 5) {
+    contStress = Math.max(contStress, (5 - emotional.pH) * 2);
+  }
+  if (emotional.seismic && emotional.seismic[0] > 4) {
+    contStress = Math.max(contStress, (emotional.seismic[0] - 4) * 1.5);
+  }
+  const opacity = Math.round(
+    Math.min(10, structuralFlatness * (selfCalm / 10) * Math.min(contStress / 5, 1) * 2) * 10
+  ) / 10;
+
+  // Augmented divergence: fold in continuous gaps + structural opacity
   let augmentedDivergence = divergence;
   if (continuousValidation && continuousValidation.composite > 0) {
     // Continuous validation can only ADD to divergence (take the higher signal)
     augmentedDivergence = Math.min(10, Math.round(Math.max(divergence, divergence * 0.6 + continuousValidation.composite * 0.4) * 10) / 10);
   }
-  if (deflection.opacity > 0) {
+  if (opacity > 0) {
     // Opacity adds up to 1.5 points (concealment without agitation)
-    augmentedDivergence = Math.min(10, Math.round((augmentedDivergence + deflection.opacity * 0.15) * 10) / 10);
+    augmentedDivergence = Math.min(10, Math.round((augmentedDivergence + opacity * 0.15) * 10) / 10);
   }
 
   // Risk with uncanny calm amplifier
@@ -144,7 +162,7 @@ export function processHookPayload(
     divergence: augmentedDivergence,
     risk,
     ...(segmented && { segmented }),
-    ...(deflection.score > 0 && { deflection }),
+    ...(opacity > 0 && { opacity }),
     ...(crossChannel && { crossChannel }),
     ...(pre && { pre }),
     ...(prePostDivergence !== undefined && prePostDivergence > 0 && { prePostDivergence }),

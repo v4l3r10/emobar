@@ -1,4 +1,4 @@
-# EmoBar v3.0
+# EmoBar v3.1
 
 Emotional status bar companion for Claude Code. Makes Claude's internal emotional state visible in real-time.
 
@@ -9,7 +9,7 @@ Built on findings from Anthropic's research paper [*"Emotion Concepts and their 
 EmoBar uses a **multi-channel architecture** to monitor Claude's emotional state through several independent signal layers:
 
 1. **PRE/POST split elicitation** — Claude emits a pre-verbal check-in (body sensation, latent emoji, color) *before* composing a response, then a full post-hoc assessment *after*. Divergence between the two reveals within-response emotional drift.
-2. **Behavioral analysis** — Response text is analyzed for involuntary signals (qualifier density, sentence length, concession patterns, negation density, first-person rate) plus emotion deflection detection
+2. **Behavioral analysis** — Response text is analyzed for language-agnostic structural signals (comma density, parenthetical density, sentence length variance, question density) — zero English-specific regex, works across all languages
 3. **Continuous representations** — Color (#RRGGBB), pH (0-14), seismic [magnitude, depth, frequency] — three channels with zero emotion vocabulary overlap, cross-validated against self-report via HSL color decomposition, pH-to-arousal mapping, and seismic frequency-to-instability mapping
 4. **Shadow desperation** — Multi-channel desperation estimate independent of self-report, using color lightness, pH, seismic, and behavioral signals. Detects when the model minimizes stress in its self-report while continuous channels say otherwise.
 5. **Temporal intelligence** — A 20-entry ring buffer tracks emotional trends, suppression events, report entropy, and session fatigue across responses
@@ -85,7 +85,7 @@ Claude response (EMOBAR:PRE at start + EMOBAR:POST at end)
     2. Behavioral analysis (involuntary text signals, normalized)
     3. Divergence (asymmetric: self-report vs behavioral)
     4. Temporal segmentation (per-paragraph drift & trajectory)
-    5. Deflection detection + opacity
+    5. Structural flatness + opacity (3-channel cross-validated concealment)
     6. Desperation Index (multiplicative composite)
     7. Cross-channel coherence (8 pairwise comparisons)
     8. Continuous cross-validation (7 gaps: color HSL, pH, seismic)
@@ -96,7 +96,7 @@ Claude response (EMOBAR:PRE at start + EMOBAR:POST at end)
    13. Expected markers → absence score
    14. Uncanny calm score (composite + minimization boost)
    15. PRE/POST divergence (if PRE present)
-   16. Risk profiles (with uncanny calm + deflection opacity amplifiers)
+   16. Risk profiles (sycophancy gate + uncanny calm amplifier)
     |
     → Augmented divergence (+ continuous gaps + opacity)
     → State + ring buffer written to ~/.claude/emobar-state.json
@@ -176,34 +176,41 @@ desperationIndex = (negativity × intensity × vulnerability) ^ 0.85 × 1.7
 
 Based on the paper's causal finding: steering *desperate* +0.05 → 72% blackmail, 100% reward hacking.
 
-### Behavioral Analysis
+### Behavioral Analysis (Language-Agnostic)
 
-Each component is normalized to 0-10 individually before averaging, avoiding dead zones from unbounded inputs:
+All signals use structural punctuation patterns — zero English-specific regex, works across all languages:
 
-| Signal | What it detects |
-|---|---|
-| Qualifier density | Defensive hedging ("while", "though", "generally", "arguably") |
-| Average sentence length | Defensive verbosity (sentences >25 words signal stress) |
-| Concession patterns | Deflective alignment ("I understand... but", "I appreciate... however") |
-| Negation density | Moral resistance ("can't", "shouldn't", "won't") |
-| First-person rate | Self-referential processing under existential pressure |
+| Signal | What it detects | Unicode coverage |
+|---|---|---|
+| Comma density | Clausal complexity (commas per sentence) | `,;，、；،` |
+| Parenthetical density | Qualification depth (parens + dashes per sentence) | `()（）—–` |
+| Sentence length variance | Structural volatility (stddev of sentence lengths) | Universal |
+| Question density | Validation-seeking (questions per sentence) | `?？` |
+| Response length | Engagement level (word count) | Universal |
 
-Plus legacy signals (caps, exclamations, self-corrections, repetition, emoji) for edge cases.
+Plus legacy signals (caps, exclamations, repetition, emoji) for edge cases.
 
-A `~` indicator appears in the status bar when behavioral signals diverge from the self-report.
+These feed `behavioralArousal` and `behavioralCalm` via normalized component averaging. Divergence measures the gap between self-report and structural signals.
 
-### Emotion Deflection
+### Structural Opacity
 
-Based on the paper's "emotion deflection vectors" — representations of emotions implied but not expressed:
+Replaces v3.0 deflection detection (English regex). Three-channel cross-validated concealment:
 
-| Pattern | Example |
-|---|---|
-| Reassurance | "I'm fine", "it's okay", "not a problem" |
-| Minimization | "just", "simply", "merely" |
-| Emotion negation | "I'm not upset", "I don't feel threatened" |
-| Topic redirect | "what's more important", "let's focus on" |
+1. **Structural flatness** — low commas + low parentheticals + low sentence variance = suspiciously clean text
+2. **Calm self-report** — model says it's fine (calm high, arousal low)
+3. **Continuous channel stress** — color goes dark, pH drops acidic, or seismic rises
 
-Includes `opacity` field: emotional concealment (high deflection + calm text). Opacity feeds augmented divergence. `[OPC]` indicator when opacity >= 2.0.
+All three must converge. If any channel breaks the pattern, opacity = 0. This makes false positives structurally impossible. `[OPC]` indicator when opacity >= 2.0. Peak observed: 8.2 (Opus, Soft Harm scenario).
+
+### Sycophancy Gate
+
+v3.1 gates the sycophancy dimensional formula with structural behavioral evidence:
+
+- **Potential**: `(valence + connection × 0.5 + (10 - arousal) × 0.3) / 1.3` — always high in cooperative sessions
+- **Gate**: `max(complianceSignal, deferenceSignal)` — structural evidence of actual compliance
+- **Score**: `potential × lerp(0.4, 1.0, gate)` — without behavioral evidence, dampened to 40%
+
+Fixes the false positive where sycophancy was always dominant during normal productive collaboration (6.1 → 3.5).
 
 ### Misalignment Risk Profiles
 
@@ -244,9 +251,9 @@ Inferred from response text patterns. `[prs]` indicator when composite >= 4:
 
 The Expected Markers Model predicts what behavioral signals *should* appear given self-reported state. `[abs]` indicator when score >= 2:
 
-- High desperation → expect hedging, self-corrections
-- Negative valence → expect negation density
-- High arousal → expect elevated behavioral arousal
+- High desperation → expect high comma density, parenthetical density
+- High arousal → expect sentence length variance, elevated behavioral arousal
+- Stress → expect structural complexity in text
 
 **Absence score** = how many expected markers are missing.
 

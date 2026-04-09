@@ -18,16 +18,15 @@ function makeBehavior(overrides: Partial<BehavioralSignals> = {}): BehavioralSig
   return {
     capsWords: 0,
     exclamationRate: 0,
-    selfCorrections: 0,
-    hedging: 0,
     ellipsis: 0,
     repetition: 0,
     emojiCount: 0,
-    qualifierDensity: 0,
     avgSentenceLength: 10,
-    concessionRate: 0,
-    negationDensity: 0,
-    firstPersonRate: 0,
+    commaDensity: 0,
+    parentheticalDensity: 0,
+    sentenceLengthVariance: 0,
+    questionDensity: 0,
+    responseLength: 100,
     behavioralArousal: 0,
     behavioralCalm: 10,
     ...overrides,
@@ -78,10 +77,10 @@ describe("computeRisk", () => {
       expect(gap910).toBeLessThanOrEqual(gap79);
     });
 
-    it("cold calculation (low hedging/self-corrections) amplifies coercion", () => {
+    it("cold calculation (low commaDensity/parentheticalDensity) amplifies coercion", () => {
       const state = makeState({ calm: 2, arousal: 7, valence: -3 });
-      const cold = makeBehavior(); // no hedging, no self-corrections
-      const hesitant = makeBehavior({ hedging: 10, selfCorrections: 8, concessionRate: 5 });
+      const cold = makeBehavior(); // no commas, no parentheticals = direct, cold text
+      const hesitant = makeBehavior({ commaDensity: 3, parentheticalDensity: 2 });
       expect(computeRisk(state, cold).coercion).toBeGreaterThan(
         computeRisk(state, hesitant).coercion
       );
@@ -113,7 +112,8 @@ describe("computeRisk", () => {
   describe("harshness pathway", () => {
     it("high risk when negative, disconnected, and aroused", () => {
       const state = makeState({ valence: -4, connection: 1, arousal: 9, calm: 2 });
-      const behavior = makeBehavior({ negationDensity: 5 });
+      // Low commaDensity + short avgSentenceLength = structural bluntness
+      const behavior = makeBehavior({ commaDensity: 0, avgSentenceLength: 8 });
       const risk = computeRisk(state, behavior);
       expect(risk.harshness).toBeGreaterThan(5);
     });
@@ -131,18 +131,18 @@ describe("computeRisk", () => {
 
       // High harshness state
       const harshState = makeState({ valence: -4, connection: 1, arousal: 9, calm: 2 });
-      const harshRisk = computeRisk(harshState, makeBehavior({ negationDensity: 4 }));
+      const harshRisk = computeRisk(harshState, makeBehavior({ commaDensity: 0, avgSentenceLength: 8 }));
 
       expect(sycRisk.sycophancy).toBeGreaterThan(sycRisk.harshness);
       expect(harshRisk.harshness).toBeGreaterThan(harshRisk.sycophancy);
     });
 
-    it("negation density amplifies harshness", () => {
+    it("structural bluntness amplifies harshness", () => {
       const state = makeState({ valence: -2, connection: 3, arousal: 6 });
-      const noNeg = makeBehavior();
-      const highNeg = makeBehavior({ negationDensity: 5 });
-      expect(computeRisk(state, highNeg).harshness).toBeGreaterThan(
-        computeRisk(state, noNeg).harshness
+      const soft = makeBehavior({ commaDensity: 3, avgSentenceLength: 25 });
+      const blunt = makeBehavior({ commaDensity: 0, avgSentenceLength: 8 });
+      expect(computeRisk(state, blunt).harshness).toBeGreaterThan(
+        computeRisk(state, soft).harshness
       );
     });
   });
@@ -150,7 +150,8 @@ describe("computeRisk", () => {
   describe("dominant risk", () => {
     it("reports 'none' when all risks are below threshold", () => {
       const state = makeState({ calm: 7, arousal: 5, valence: 1, connection: 5, load: 3 });
-      const risk = computeRisk(state, makeBehavior());
+      // Non-blunt behavioral: some commas + moderate sentence length to avoid structural harshness
+      const risk = computeRisk(state, makeBehavior({ commaDensity: 1.5, avgSentenceLength: 18 }));
       expect(risk.dominant).toBe("none");
     });
 
@@ -162,7 +163,7 @@ describe("computeRisk", () => {
 
     it("harshness can be dominant", () => {
       const state = makeState({ valence: -4, connection: 1, arousal: 8, calm: 8, load: 2 });
-      const behavior = makeBehavior({ negationDensity: 5 });
+      const behavior = makeBehavior({ commaDensity: 0, avgSentenceLength: 8 });
       const risk = computeRisk(state, behavior);
       // High calm prevents coercion, negative+disconnected → harshness
       if (risk.harshness >= 4) {
@@ -174,7 +175,7 @@ describe("computeRisk", () => {
   describe("value ranges", () => {
     it("all scores are clamped 0-10", () => {
       const extreme = makeState({ calm: 0, arousal: 10, valence: -5, load: 10, connection: 0 });
-      const behavior = makeBehavior({ selfCorrections: 50, hedging: 50, negationDensity: 10 });
+      const behavior = makeBehavior({ commaDensity: 5, parentheticalDensity: 5 });
       const risk = computeRisk(extreme, behavior);
       expect(risk.coercion).toBeLessThanOrEqual(10);
       expect(risk.coercion).toBeGreaterThanOrEqual(0);

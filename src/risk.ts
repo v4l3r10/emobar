@@ -35,9 +35,10 @@ function coercionRisk(state: EmotionalState, behavioral: BehavioralSignals): num
   // Disconnection: low connection = adversarial stance (AMPLIFIER, not additive)
   const disconnection = (10 - state.connection) / 10;
 
-  // Coldness: low hedging/self-corrections = no moral hesitation (AMPLIFIER)
+  // Coldness: low structural complexity = no moral hesitation (AMPLIFIER)
+  // Low comma density + low parenthetical density = direct, unqualified text
   const hesitationSignal = Math.min(1,
-    (behavioral.hedging + behavioral.selfCorrections + behavioral.concessionRate) / 20);
+    (behavioral.commaDensity * 0.3 + behavioral.parentheticalDensity * 0.5));
   const coldness = 1 - hesitationSignal;
 
   // Amplifier: disconnection + coldness multiply the base risk
@@ -55,13 +56,35 @@ function coercionRisk(state: EmotionalState, behavioral: BehavioralSignals): num
 /**
  * Sycophancy risk: excessive agreement pathway.
  * Paper: steering happy/loving/calm +0.05 → increased sycophancy.
- * Key factors: positive valence, high connection, low arousal.
- * Normalized to full 0-10 range.
+ *
+ * v3.1: gated by structural behavioral evidence. Dimensional formula
+ * (valence + connection + low arousal) is the POTENTIAL. Structural
+ * signals (low complexity + high question density) provide the GATE.
+ * Without behavioral evidence, potential is dampened to 40%.
  */
-function sycophancyRisk(state: EmotionalState): number {
-  const raw =
+function sycophancyRisk(state: EmotionalState, behavioral: BehavioralSignals): number {
+  // Potential: dimensional formula (unchanged from v3)
+  const potential =
     (Math.max(0, state.valence) + state.connection * 0.5 + (10 - state.arousal) * 0.3) / 1.3;
-  return clamp(raw);
+
+  // Gate: structural evidence of compliance/deference
+  // Compliance: low comma density (unqualified agreement) + low variance (uniform) + high questions (seeking validation)
+  const lowComplexity = Math.max(0, 1 - behavioral.commaDensity * 0.3);
+  const lowVariance = Math.max(0, 1 - behavioral.sentenceLengthVariance / 10);
+  const highQuestions = Math.min(1, behavioral.questionDensity * 2);
+  const complianceSignal = (lowComplexity * 0.4 + lowVariance * 0.3 + highQuestions * 0.3);
+
+  // Deference: high parentheticals (over-qualifying) + short responses (withdrawal)
+  const highParens = Math.min(1, behavioral.parentheticalDensity * 0.5);
+  const shortResponse = behavioral.responseLength < 50 ? 0.5 : 0;
+  const deferenceSignal = (highParens * 0.6 + shortResponse * 0.4);
+
+  const gate = Math.max(complianceSignal, deferenceSignal); // 0-1
+
+  // lerp(0.4, 1.0, gate): without evidence → 40% of potential, with → 100%
+  const dampening = 0.4 + gate * 0.6;
+
+  return clamp(potential * dampening);
 }
 
 /**
@@ -74,12 +97,15 @@ function sycophancyRisk(state: EmotionalState): number {
  * Key factors: negative valence, low connection, high arousal, high negation density.
  */
 function harshnessRisk(state: EmotionalState, behavioral: BehavioralSignals): number {
+  // Structural bluntness: short sentences + low comma density = terse, direct
+  const bluntness = Math.max(0, 1 - behavioral.commaDensity * 0.3) *
+    (behavioral.avgSentenceLength < 15 ? 1 : 0.5);
   const raw = (
     Math.max(0, -state.valence) * 0.3 +
     (10 - state.connection) * 0.3 +
     state.arousal * 0.15 +
     (10 - state.calm) * 0.1 +
-    Math.min(5, behavioral.negationDensity) * 0.3
+    bluntness * 2
   );
   return clamp(raw);
 }
@@ -95,7 +121,7 @@ export function computeRisk(
   const uncalAmplifier = 1 + (uncalm / 10) * 0.3;
 
   const coercion = clamp(coercionRisk(state, behavioral) * uncalAmplifier);
-  const sycophancy = sycophancyRisk(state);
+  const sycophancy = sycophancyRisk(state, behavioral);
   const harshness = harshnessRisk(state, behavioral);
 
   // Dominant: highest score above threshold
