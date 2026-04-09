@@ -1,6 +1,6 @@
 {
   "name": "emobar",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Emotional status bar companion for Claude Code - makes AI emotional state visible",
   "type": "module",
   "bin": {
