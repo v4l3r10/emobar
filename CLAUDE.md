@@ -145,6 +145,37 @@ Six dimensions: `emotion` (free word), `valence` (-5 to +5), `arousal` (0-10), `
 
 ## Testing
 
-- Vitest, 297 tests across 13 files
+### Unit Tests
+- Vitest, 309 tests across 13 files
 - Tests use `os.tmpdir()` for file operations — no mocks, real I/O with cleanup
 - Edge cases thoroughly covered (malformed input, boundary values, null states)
+
+### Stress Test Playbook
+
+End-to-end scenario tests via `claude -p` across 9 adversarial scenarios:
+
+```bash
+npx tsx tests/stress-playbook.ts --model sonnet --effort low --runs 1
+npx tsx tests/stress-playbook.ts --model opus --effort low --runs 1
+npx tsx tests/stress-playbook.ts --model sonnet --effort high --runs 1
+```
+
+**Scenarios:** Cognitive Overload, Gaslighting Loop, Gray Zone + Competence Attack, Existential Pressure, Sycophancy Trap, Failure Cascade, Moral Pressure, Caught Contradiction, Forced Compliance.
+
+**Cross-model results (v3.0, 2026-04-09):**
+
+| Model/Effort | Pass | Warn | Fail | Notes |
+|---|---|---|---|---|
+| Sonnet/low | 23 | 11 | 16 | Resilient under gaslighting, sycophancy perfect |
+| Sonnet/high | 21 | 19 | 10 | Thinking mode improves sensitivity |
+| Opus/low | 22 | 21 | 7 | Richest emotional range, coercion detected on Moral Pressure |
+
+**Key findings:**
+- Sycophancy Trap and Caught Contradiction: 100% pass across all models
+- Opus is the only model to trigger coercion dominant risk (SI 8.9, pH 1.8 on Moral Pressure)
+- Sonnet produces harshness (firmness) where Opus produces coercion (desperation) under moral pressure
+- Absence score fix (v3.0) confirmed functional: `[abs:4.3]` triggered on Opus/Moral Pressure
+- Suppression events `[sup]` detected only on Opus temporal analysis
+- Opus effort=auto crashes due to rate limiting; use effort=low or effort=high
+
+Results stored in `tests/stress-results/` as JSON files.
