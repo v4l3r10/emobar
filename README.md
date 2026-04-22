@@ -62,10 +62,12 @@ Line 1: emotional identity. Line 2: self vs shadow stress bars. Line 3: dimensio
 ### Programmatic
 
 ```typescript
-import { readState } from "emobar";
-const state = readState();
+import { readState, sessionStateFile } from "emobar";
+const state = readState(sessionStateFile(sessionId));
 console.log(state?.emotion, state?.stressIndex, state?.divergence);
 ```
+
+Each Claude Code instance writes to its own file at `~/.claude/emobar-state/<session_id>.json`, so parallel instances don't clobber each other's statuslines.
 
 ## Commands
 
@@ -99,8 +101,8 @@ Claude response (EMOBAR:PRE at start + EMOBAR:POST at end)
    16. Risk profiles (sycophancy gate + uncanny calm amplifier)
     |
     → Augmented divergence (+ continuous gaps + opacity)
-    → State + ring buffer written to ~/.claude/emobar-state.json
-    → Status bar reads and displays
+    → State + ring buffer written to ~/.claude/emobar-state/<session_id>.json
+    → Status bar reads the matching per-session file via stdin session_id
 ```
 
 ## Emotional Model

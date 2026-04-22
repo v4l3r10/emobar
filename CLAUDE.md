@@ -50,8 +50,8 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
    15. hook.ts: compute PRE/POST divergence v2 (color-only, HSL lightness+hue)
    16. risk.ts: compute risk (coercion v3 multiplicative, sycophancy, harshness)
     → hook.ts: compute augmented divergence (+ continuous gaps + opacity)
-    → state.ts: write EmoBarState + ring buffer (max 20 entries)
-  → CLI display command reads state file → display.ts formats for statusline
+    → state.ts: write EmoBarState + ring buffer (max 20 entries) to per-session file
+  → CLI display command reads the matching per-session file via stdin session_id → display.ts formats for statusline
 ```
 
 ### Module Map
@@ -67,7 +67,7 @@ Claude response (with EMOBAR:PRE at start + EMOBAR:POST at end)
 | `stress.ts` | StressIndex v2: linear base + non-linear desperation amplifier |
 | `temporal.ts` | Ring buffer temporal analysis: desperation trend (slope), suppression events (sudden drops), report entropy (Shannon), baseline drift, session fatigue |
 | `pressure.ts` | Prompt pressure analysis from response text patterns (defensive, conflict, complexity, session) + uncanny calm composite scoring |
-| `state.ts` | Read/write `emobar-state.json`; builds 20-entry ring buffer (`_history`) |
+| `state.ts` | Read/write per-session state files under `emobar-state/`; builds 20-entry ring buffer (`_history`); exports `resolveStateFilePath` for stdin-based session routing |
 | `hook.ts` | Stop event processor — 16-stage pipeline: parse → behavioral → divergence → segmented → structuralFlatness+opacity → desperation → crossChannel → continuousValidation → shadowDesperation → temporal → pressure → absence → uncannyCalm → prePostDivergence → risk → augmentedDivergence → write |
 | `display.ts` | Dual-layer ANSI statusline: surface (projected) vs depth (leaked). 3 levels: minimal (emoji+bar+coherence), compact (surface+depth bars+keyword), full (3-line: surface dims / depth channels / gap indicators). Depth stress computed from color lightness, pH, seismic, somatic. |
 | `setup.ts` | Install/uninstall orchestration: deploy hook, inject CLAUDE.md instruction, configure settings.json and statusline |
@@ -85,7 +85,7 @@ Three separate entry points with independent shebangs:
 
 All paths resolved via `types.ts`. Base: `CLAUDE_HOME` env var or `~/.claude/`.
 
-- `~/.claude/emobar-state.json` — persisted state (written by hook, read by display)
+- `~/.claude/emobar-state/<session_id>.json` — per-session state (one file per Claude Code instance; hook writes, display reads via stdin `session_id`). session_id is sanitized via `sessionStateFile()` in `types.ts` to prevent path traversal.
 - `~/.claude/CLAUDE.md` — instruction injection site (wrapped in `<!-- EMOBAR:START/END -->` markers)
 - `~/.claude/settings.json` — hook registration + statusline config
 - `~/.claude/hooks/emobar-hook.js` — deployed hook script

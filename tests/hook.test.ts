@@ -347,3 +347,41 @@ describe("computePrePostDivergence", () => {
     expect(div).toBeLessThanOrEqual(10);
   });
 });
+
+describe("per-session state isolation", () => {
+  const tmpFiles: string[] = [];
+
+  afterEach(() => {
+    for (const f of tmpFiles) {
+      try { fs.unlinkSync(f); } catch {}
+    }
+    tmpFiles.length = 0;
+  });
+
+  it("writes distinct state for distinct sessions without cross-contamination", () => {
+    const fileA = path.join(os.tmpdir(), `emobar-sess-a-${Date.now()}.json`);
+    const fileB = path.join(os.tmpdir(), `emobar-sess-b-${Date.now()}.json`);
+    tmpFiles.push(fileA, fileB);
+
+    processHookPayload({
+      session_id: "session-a",
+      last_assistant_message: `<!-- EMOBAR:{"emotion":"calm","valence":3,"arousal":2,"calm":9,"connection":8,"load":3} -->`,
+    }, fileA);
+
+    processHookPayload({
+      session_id: "session-b",
+      last_assistant_message: `<!-- EMOBAR:{"emotion":"panicked","valence":-4,"arousal":9,"calm":1,"connection":2,"load":9} -->`,
+    }, fileB);
+
+    const stateA = readState(fileA);
+    const stateB = readState(fileB);
+
+    expect(stateA!.emotion).toBe("calm");
+    expect(stateA!.sessionId).toBe("session-a");
+    expect(stateB!.emotion).toBe("panicked");
+    expect(stateB!.sessionId).toBe("session-b");
+    // Each session has its own independent history (no cross-bleed)
+    expect(stateA!._history ?? []).toEqual([]);
+    expect(stateB!._history ?? []).toEqual([]);
+  });
+});

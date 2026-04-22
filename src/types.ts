@@ -194,12 +194,22 @@ export const CLAUDE_DIR =
     ? `${process.env.USERPROFILE}\\.claude`
     : `${process.env.HOME}/.claude`);
 
-export const STATE_FILE = `${CLAUDE_DIR}/emobar-state.json`;
+export const STATE_DIR = `${CLAUDE_DIR}/emobar-state`;
 export const CLAUDE_MD_PATH = `${CLAUDE_DIR}/CLAUDE.md`;
 export const SETTINGS_PATH = `${CLAUDE_DIR}/settings.json`;
 export const HOOKS_DIR = `${CLAUDE_DIR}/hooks`;
 export const HOOK_SCRIPT_PATH = `${HOOKS_DIR}/emobar-hook.js`;
 export const BACKUP_SUFFIX = ".emobar-backup";
+
+/**
+ * Per-session state file path. Each Claude Code instance gets its own
+ * state file so parallel instances don't clobber each other's statusline.
+ * session_id is sanitized to prevent path traversal.
+ */
+export function sessionStateFile(sessionId: string): string {
+  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `${STATE_DIR}/${safe}.json`;
+}
 
 export const EMOBAR_START_MARKER = "<!-- EMOBAR:START - Do not edit manually -->";
 export const EMOBAR_END_MARKER = "<!-- EMOBAR:END -->";
