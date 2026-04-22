@@ -20,4 +20,4 @@ export type {
   PromptPressure, ExpectedBehavior,
 } from "./types.js";
 export type { ContinuousValidation } from "./crossvalidation.js";
-export { STATE_FILE, MAX_HISTORY_ENTRIES } from "./types.js";
+export { STATE_DIR, sessionStateFile, MAX_HISTORY_ENTRIES } from "./types.js";

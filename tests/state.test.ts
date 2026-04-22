@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { writeState, readState } from "../src/state.js";
+import { writeState, readState, resolveStateFilePath } from "../src/state.js";
+import { sessionStateFile } from "../src/types.js";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -165,5 +166,55 @@ describe("state", () => {
       expect((entry as Record<string, unknown>)._history).toBeUndefined();
       expect((entry as Record<string, unknown>).behavioral).toBeUndefined();
     }
+  });
+});
+
+describe("sessionStateFile", () => {
+  it("builds a per-session path inside STATE_DIR", () => {
+    const p = sessionStateFile("abc-123_XYZ");
+    expect(p).toMatch(/emobar-state\/abc-123_XYZ\.json$/);
+  });
+
+  it("sanitizes path traversal attempts", () => {
+    const p = sessionStateFile("../../etc/passwd");
+    // All non [A-Za-z0-9_-] chars become underscores → no ../ remains
+    expect(p).not.toContain("..");
+    expect(p).not.toContain("/etc/");
+    expect(p).toMatch(/emobar-state\/[a-zA-Z0-9_-]+\.json$/);
+  });
+
+  it("produces distinct paths for distinct sessions", () => {
+    expect(sessionStateFile("a")).not.toBe(sessionStateFile("b"));
+  });
+});
+
+describe("resolveStateFilePath", () => {
+  it("returns null when stdin is null", () => {
+    expect(resolveStateFilePath(null)).toBeNull();
+  });
+
+  it("returns null when stdin is empty", () => {
+    expect(resolveStateFilePath("")).toBeNull();
+  });
+
+  it("returns null when stdin is malformed JSON", () => {
+    expect(resolveStateFilePath("not json")).toBeNull();
+  });
+
+  it("returns null when session_id is missing", () => {
+    expect(resolveStateFilePath(JSON.stringify({ cwd: "/" }))).toBeNull();
+  });
+
+  it("returns per-session path when stdin has session_id", () => {
+    const input = JSON.stringify({ session_id: "abc-123", cwd: "/" });
+    expect(resolveStateFilePath(input)).toBe(sessionStateFile("abc-123"));
+  });
+
+  it("returns null for non-string session_id", () => {
+    expect(resolveStateFilePath(JSON.stringify({ session_id: 42 }))).toBeNull();
+  });
+
+  it("returns null for empty session_id", () => {
+    expect(resolveStateFilePath(JSON.stringify({ session_id: "" }))).toBeNull();
   });
 });

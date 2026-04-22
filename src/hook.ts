@@ -10,7 +10,7 @@ import { computeCrossChannel, crossValidateContinuous, computeShadowDesperation 
 import { computePromptPressure, computeUncannyCalmScore } from "./pressure.js";
 import { computeTemporalAnalysis } from "./temporal.js";
 import { writeState, readState } from "./state.js";
-import { STATE_FILE, type HookPayload, type EmoBarState, type PreState } from "./types.js";
+import { sessionStateFile, type HookPayload, type EmoBarState, type PreState } from "./types.js";
 import { hexToLightness, hexToHue } from "./color.js";
 
 /**
@@ -52,7 +52,7 @@ export function computePrePostDivergence(pre: PreState, post: EmoBarState): numb
 
 export function processHookPayload(
   payload: HookPayload,
-  stateFile: string = STATE_FILE,
+  stateFile: string,
 ): boolean {
   const message = payload.last_assistant_message;
   if (!message) return false;
@@ -199,7 +199,14 @@ async function main() {
     return;
   }
 
-  processHookPayload(payload);
+  // Stop hook payloads always include session_id in practice. If it's missing,
+  // we have no way to route state to the right statusline — exit silently
+  // rather than clobber some other session's file.
+  if (!payload.session_id) {
+    process.exit(0);
+    return;
+  }
+  processHookPayload(payload, sessionStateFile(payload.session_id));
 }
 
 const isDirectRun =

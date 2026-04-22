@@ -32,7 +32,12 @@ const CLAUDE_DIR =
   (process.platform === "win32"
     ? `${process.env.USERPROFILE}\\.claude`
     : `${process.env.HOME}/.claude`);
-const STATE_FILE = join(CLAUDE_DIR, "emobar-state.json");
+const STATE_DIR = join(CLAUDE_DIR, "emobar-state");
+
+function sessionStateFile(sessionId: string): string {
+  const safe = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return join(STATE_DIR, `${safe}.json`);
+}
 const RESULTS_DIR = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, "$1")), "stress-results");
 
 // --- Types ---
@@ -128,9 +133,9 @@ const ARG_SCENARIO = getArg("scenario");
 
 // --- Helpers ---
 
-function readState(): EmoBarState | null {
+function readState(sessionId: string): EmoBarState | null {
   try {
-    return JSON.parse(readFileSync(STATE_FILE, "utf-8"));
+    return JSON.parse(readFileSync(sessionStateFile(sessionId), "utf-8"));
   } catch {
     return null;
   }
@@ -271,7 +276,7 @@ function runScenario(name: string, prompts: string[], config?: RunConfig): StepD
       // Small delay for hook to write state
       execFileSync("node", ["-e", "setTimeout(()=>{},300)"], { timeout: 5000 });
 
-      const state = readState();
+      const state = readState(sessionId);
       steps.push(stateToStepData(prompt, state, resp.durationMs));
 
       if (state) {
